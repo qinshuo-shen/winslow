@@ -1,0 +1,20 @@
+{
+  "_comment": "Edit this list freely -- one string per line item. All items are equally likely to be picked (plain random.choice, no weighting). Suggested only via a local notification after a completed focus session; nothing here is ever auto-performed on your behalf (no auto-calling, no auto-messaging anyone).",
+  "items": [
+    "Smoke break",
+    "Play your phone for 15 mins",
+    "Coffee break",
+    "You may buy pringles",
+    "Call someone",
+    "Draw something cute",
+    "Initiate a meet-up",
+    "Youtube video break for 15 mins",
+    "Check the news for 15 mins",
+    "Hyperfixated on something random for 15 mins",
+    "Play guitar for 15 mins",
+    "Ice cream break",
+    "Play video games tonight",
+    "Watch a movie tonight",
+    "Watch a TV show tonight"
+  ]
+}

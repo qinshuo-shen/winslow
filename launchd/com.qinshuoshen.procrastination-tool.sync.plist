@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.qinshuoshen.procrastination-tool.sync</string>
+
+    <!-- Runs daily at 7:00am if the Mac happens to be awake then. Change
+         the Hour/Minute below and reload (see README.md) to adjust. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>7</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- The real guarantee for a laptop that's asleep/closed at 7am and
+         not opened until work starts (confirmed 2026-08-02: user isn't at
+         their laptop until ~9am): RunAtLoad fires the sync every time this
+         LaunchAgent is (re)loaded, which happens at every fresh login --
+         so opening the laptop and logging in at 9am triggers it right
+         then, independent of whether the 7am StartCalendarInterval trigger
+         itself ever fired. (If the Mac was merely asleep rather than fully
+         logged out, launchd's StartCalendarInterval also has documented
+         catch-up-after-wake behavior on its own -- RunAtLoad is the
+         guaranteed fallback for the fresh-login case, not a replacement
+         for that.) Harmless if it fires more than once a day (e.g.
+         multiple logins) -- sync_tasks.py is fully idempotent, a redundant
+         run just finds everything already blocked and no-ops quickly. -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/qinshuoshen/Developer/procrastination-tool/.venv/bin/python3</string>
+        <string>/Users/qinshuoshen/Developer/procrastination-tool/scripts/sync_tasks.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/qinshuoshen/Developer/procrastination-tool</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/qinshuoshen/Developer/procrastination-tool/logs/launchd_sync.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/qinshuoshen/Developer/procrastination-tool/logs/launchd_sync.err.log</string>
+</dict>
+</plist>

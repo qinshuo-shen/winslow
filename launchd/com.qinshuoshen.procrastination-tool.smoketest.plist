@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.qinshuoshen.procrastination-tool.smoketest</string>
+
+    <!-- Phase 0 only: no automatic schedule on purpose -- kickstarted
+         manually for the permission de-risking test. Phase 1 adds a real
+         morning StartCalendarInterval to the production sync agent.
+
+         Project deliberately lives OUTSIDE iCloud Drive (~/Developer, not
+         ~/Library/Mobile Documents/com~apple~CloudDocs/...) -- confirmed
+         empirically that launchd-spawned background processes get
+         "Operation not permitted" on iCloud Drive paths even for a plain
+         `ls`, a broader and harder-to-grant restriction than the
+         Calendar/Notification TCC prompts, which iCloud has no equivalent
+         grantable dialog for from a headless process. -->
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/qinshuoshen/Developer/procrastination-tool/.venv/bin/python3</string>
+        <string>/Users/qinshuoshen/Developer/procrastination-tool/scripts/smoke_test.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/qinshuoshen/Developer/procrastination-tool</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/qinshuoshen/Developer/procrastination-tool/logs/launchd_smoketest.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/qinshuoshen/Developer/procrastination-tool/logs/launchd_smoketest.err.log</string>
+</dict>
+</plist>
