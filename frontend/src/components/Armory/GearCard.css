@@ -1,0 +1,42 @@
+.gear-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6rem 0.85rem;
+  background: var(--code-bg);
+}
+
+.gear-card__info {
+  flex: 1;
+}
+
+.gear-card__name {
+  margin: 0 0 0.25rem;
+  color: var(--text-h);
+}
+
+.gear-card__flavor {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text);
+  font-style: italic;
+}
+
+.gear-card__buy {
+  font: inherit;
+  padding: 0.4rem 0.9rem;
+  border-radius: 6px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--text-h);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.gear-card__buy:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

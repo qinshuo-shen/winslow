@@ -1,0 +1,34 @@
+.today-schedule {
+  text-align: left;
+  margin-bottom: 2rem;
+}
+
+.today-schedule h2 {
+  text-align: left;
+}
+
+.today-schedule__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.today-schedule__list li {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--code-bg);
+}
+
+.today-schedule__empty,
+.today-schedule__loading {
+  color: var(--text);
+  font-style: italic;
+}
+
+.today-schedule__error {
+  color: #d1425f;
+}

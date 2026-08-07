@@ -113,7 +113,7 @@ launchctl bootstrap gui/501 ~/Library/LaunchAgents/com.qinshuoshen.procrastinati
 - **Eighth follow-up fix (2026-08-03) — same-day resync could schedule into the past, and concentration wasn't considered at all**: the user added a new Fill-ins task to Notion mid-morning while already working on an earlier Major Projects block; a resync placed the new task at 9:00–9:30 — already past by the time it ran (it was 10:15). Root cause confirmed by tracing every entry point (`scheduler._work_blocks_for_day()`/`compute_free_slots()`/`schedule_tasks()`, reached by the 7am trigger, `RunAtLoad`, and the dashboard's "Run sync now" button alike): nothing anywhere in the pipeline ever consulted the actual wall-clock time — a free slot was offered up purely from fixed work-hour boundaries and Notion/Calendar busy time, with no floor at "now." Fixed in `scheduler.py`: `_work_blocks_for_day()` now accepts an optional `now`, and when the day being scheduled is `now`'s own date, clips every block's start to `max(block_start, round_up(now, 5min))`, dropping any block that's entirely in the past (e.g. `now` already past `WORK_END_HOUR`, or inside/past lunch). `schedule_tasks()` computes `now` once per call (defaulting to `datetime.now()`) so every task placed in the same run shares one consistent floor. A 7am/login-time run is unaffected (`now` is already before `WORK_START_HOUR`) — this only changes behavior for a genuine mid-day resync. Separately, the user asked whether it's logical for low-concentration tasks to slot in ahead of high-concentration ones: `notion_tasks.PRIORITY_ORDER` was Impact-first (`Quick Wins → Major Projects → Fill-ins → Thankless Tasks`) with no concept of concentration/energy at all. Reordered to Effort-first, Impact as the tie-break within each tier: `Major Projects → Thankless Tasks → Quick Wins → Fill-ins` — since `schedule_tasks()` is a single greedy first-fit pass in list order, putting heavy tasks first is sufficient on its own to give them the day's freshest slots, with light tasks naturally filling in whatever's left over. Confirmed via grep that `PRIORITY_ORDER` has exactly one consumer (`notion_tasks.py`'s own `sort_key()`), so the reorder is fully self-contained. **Verified with a synthetic test** (Focus Blocks calendar scoped, avoiding a separately-discovered ~30s-latency issue in the 4-calendar busy check — see below): with a simulated `now` of 10:15am and a real busy "Draft review" block already on the calendar, every synthetic placement landed at or after 10:15, and the heavy synthetic task claimed the day's first available slot while the light ones were pushed later — matching the real bug scenario exactly.
   - **Follow-up, same day — the watermark didn't go far enough**: the user pointed out the live result still had "Side-project coding session" (Fill-ins) landing chronologically *before* the two Major Projects tasks scheduled the same day (it grabbed a small leftover morning gap the heavy tasks couldn't fit into) — correctly identifying that heavy-first *processing order* isn't the same guarantee as heavy-first *chronological placement*, since first-fit backfills whatever gaps a later, smaller task happens to fit. Fixed by making `schedule_tasks()` stably re-sort tasks heavy-before-light regardless of input order (guaranteeing every heavy task in a batch is attempted before any light one), and tracking a per-day watermark: once a heavy task is placed on a given day, no light task considered for that same day may start before that heavy task's own end + break, even if an earlier small gap would otherwise fit it. Deliberately scoped to heavy tasks placed *by this same run* only, not pre-existing calendar blocks from earlier syncs, since there's no reliable way to infer "was this busy interval a heavy task" from a plain calendar event's start/end/summary alone. `_work_blocks_for_day`'s `now` parameter was generalized/renamed to `floor` (any earliest-allowed-start instant, not just wall-clock time) to carry both constraints through the same mechanism. **Verified with an isolated synthetic test** on a real-calendar-data-free future day: a 30-min light task that would previously have grabbed a small pre-heavy-task morning gap now correctly waits until after the heavy task's own placement. **Verified live**: deleted and resynced today's real blocks — "Side-project coding session" now correctly rolls to tomorrow morning instead of squeezing into today's pre-lunch gap, since both real Major Projects tasks fill the rest of today with no room left after their own placements.
   - **Follow-up, same day — the ~30s latency was investigated and fixed, but not the way first assumed**: `calendar_bridge.list_busy_events()`'s 4-calendar query consistently took ~29-30s against the real calendars, right at the edge of (and sometimes past) `_run_applescript`'s hardcoded 30s timeout. Root cause: AppleScript's `whose` filter on Calendar.app events scans a calendar's *entire* event history linearly, not via a date index — one iCloud-synced calendar (`个人`) alone consistently cost ~15s, presumably proportional to its total accumulated event count. **First attempt — running each calendar's query as a separate concurrent subprocess — was tried and measured to make no difference at all** (still ~29.6s total): a direct timing test of two calendars queried concurrently confirmed they finished sequentially, one visibly queued behind the other's actual work rather than overlapping, because Calendar.app itself serializes incoming Apple Events one at a time regardless of how many client processes are asking concurrently. The bottleneck is inside Calendar.app, not this process, so no amount of client-side concurrency can shorten it — reverted to the simpler single-script form. **The only real, available mitigation**: bumped `_run_applescript`'s timeout from 30s to 45s, giving comfortable headroom over the measured ~29-30s. Also switched this function's output delimiters from tab/linefeed to the same control-character scheme (`ASCII 30`/`31`) already used elsewhere in this file, for consistency (calendar/event names here are unlikely to contain tabs, but there's no reason for this one query to be the odd one out).
-- Daily automatic sync is live via a real `StartCalendarInterval` LaunchAgent (7:00am, adjustable in `launchd/com.qinshuoshen.procrastination-tool.sync.plist`) — confirmed running cleanly non-interactively (no permission prompts, correct idempotent no-op behavior) via `launchctl kickstart`.
+- Daily automatic sync is live via a real `StartCalendarInterval` LaunchAgent (7:00am, adjustable in `launchd/com.qinshuoshen.procrastination-tool.sync.plist`) — confirmed running cleanly non-interactively (no permission prompts, correct idempotent no-op behavior) via `launchctl kickstart`. **Disabled 2026-08-07** — see the "Reloading the sync agent" section below; this history entry is left as-is since it was accurate at the time.
 - **Ninth follow-up fix (2026-08-03) — rest-of-week look-ahead**: the user noticed the calendar only ever showed today, never a preview of the rest of the week. Root cause: `notion_tasks.fetch_actionable_tasks()`'s filter was `Date <= today` with no look-ahead (the seventh follow-up fix above) — a task due Thursday simply wasn't fetched at all until Thursday's own sync ran, so the week filled in one day at a time instead of all at once. Fixed by changing the filter to `Date <= end of this week` (`_end_of_week()` — the coming Sunday, this project's last working day per `WORKING_WEEKDAYS`, or today itself if today is Sunday), so Tuesday–Friday tasks are now visible and placeable today. This alone would have let a task be *placed* before its own start date, though, so `scheduler.schedule_tasks()`'s day-selection loop now also skips any candidate day earlier than the task's own `due` — a task fetched ahead of time is visible for scheduling but still can't land before its start date arrives. `sort_key`'s tie-break order (priority tier first, due date second) was deliberately left unchanged, to preserve the effort-first "heavy tasks get the freshest slot" guarantee from the eighth follow-up fix — due date only breaks ties within a tier, it doesn't override priority now that a fetch can span multiple due dates. **Verified**: a synthetic Major Projects task dated Thursday correctly appeared in a Monday-run fetch but only got *placed* on/after Thursday, while a same-run Fill-ins task due today still landed today unaffected.
 
 ## Using the focus timer
@@ -143,7 +143,19 @@ A session blocks the terminal with a live countdown until it finishes, you press
 - No LaunchAgent needed for this phase — unlike the Notion sync, focus sessions are something you deliberately start yourself, not a background automation.
 - **Follow-up (2026-08-03) — pause/resume with a 20-minute auto-fail**: the user wanted to pause a session for a real interruption without either abandoning it or leaving the clock running unattended. `run_focus_session()` now puts stdin into cbreak mode (`termios`/`tty.setcbreak`) and polls for a single keypress (`select.select`) each tick instead of a plain `time.sleep`: `p` pauses, `r` resumes, Ctrl-C still stops early exactly as before (cbreak only clears `ICANON`/`ECHO`, it leaves `ISIG` alone, so Ctrl-C still raises `KeyboardInterrupt`). If the *current* pause (not cumulative pause time across the session — confirmed with the user, it resets on every resume) exceeds `config.PAUSE_FAIL_MINUTES` (default 20, env-overridable), the session auto-fails: a third distinct outcome (`failed_pause_timeout`) alongside `completed`/`stopped_early`, no reward, its own notification. `actual_minutes` changed from wall-clock (`end - start`) to worked-time-only (pause time excluded) — matches what "focused minutes" is supposed to mean once pausing is a real thing a session can do. Storage: a new nullable `outcome` column on `sessions`, added via a guarded `ALTER TABLE` (`try`/`except sqlite3.OperationalError`, since sqlite has no `ADD COLUMN IF NOT EXISTS`) so the existing populated `data/sessions.db` didn't need a fresh migration script; legacy rows just show `outcome=None` and fall back to the existing `completed` bool for display. A non-tty fallback (redirected stdin) keeps the old plain blocking-loop behavior, minus pause capability, so nothing hangs if `run_focus_session()` is ever called non-interactively. **Verified live** in a real terminal via a pty-based test harness: pausing and resuming within the limit still completes with a reward and correctly excludes paused time from logged minutes; pausing past the limit (tested with `PAUSE_FAIL_MINUTES` temporarily shortened) auto-fails with no reward and a distinct notification; Ctrl-C still logs as a normal early stop. Test rows cleaned out of `data/sessions.db` afterward.
 
-## Using the dashboard
+## Using the web dashboard
+
+```bash
+cd ~/Developer/procrastination-tool
+cd frontend && npm install && npm run build   # one-time, and again after any frontend change
+cd ..
+./.venv/bin/pip install -e '.[api]'            # one-time, installs fastapi/uvicorn
+.venv/bin/uvicorn api.main:app
+```
+
+Opens at `http://localhost:8000`. One process, one port: `api/main.py` serves `/api/*` (task list, the drag-and-drop weekly scheduling grid, focus session history/stats, a live-ticking focus timer, RPG character/bloodstain/questlines/gear) and, via a `StaticFiles` mount, the built React app (`frontend/dist/`) for everything else — same single-command ethos as `streamlit run app.py` or `focus start`. This replaces the Streamlit dashboard below: Streamlit's rerun-on-every-interaction model and third-party bidirectional components (see the wheel editor state gotcha in "What Phase 4 proved") were fighting the actual UX wanted — a real drag-and-drop scheduling grid and a smoothly-ticking timer, not a full-page rerun on every interaction. No logic duplicated — `api/` is a read/write layer over the same `procrastination_tool` package everything else uses, and `frontend/` just polls it for state.
+
+## Legacy dashboard (Streamlit, superseded by the web dashboard above)
 
 ```bash
 cd ~/Developer/procrastination-tool
@@ -151,7 +163,7 @@ cd ~/Developer/procrastination-tool
 .venv/bin/streamlit run app.py
 ```
 
-Opens at `http://localhost:8501` (or the next free port). Four sections: today's schedule (reads the Focus Blocks calendar directly), a "Run sync now" button (calls the exact same code the 7am LaunchAgent calls — safe to click any time, idempotent), focus session stats with a 7-day bar chart, and a spin-wheel item editor (view/remove/add, saves straight to `spin_wheel_config.json`). No separate copy of any logic — it's a UI layer over the same `procrastination_tool` package everything else uses.
+Opens at `http://localhost:8501` (or the next free port). Four sections: today's schedule (reads the Focus Blocks calendar directly), a "Run sync now" button (calls the exact same code the 7am LaunchAgent calls — safe to click any time, idempotent), focus session stats with a 7-day bar chart, and a spin-wheel item editor (view/remove/add, saves straight to `spin_wheel_config.json`). No separate copy of any logic — it's a UI layer over the same `procrastination_tool` package everything else uses. Kept on disk as a fallback, same precedent as `spin_wheel.py` and the old `scheduler.py`/`sync.py` auto-scheduler — still fully functional, just no longer the primary path.
 
 ## What Phase 4 proved
 
@@ -164,7 +176,13 @@ Opens at `http://localhost:8501` (or the next free port). Four sections: today's
 ## Package layout
 
 ```
-app.py                       # Phase 4: Streamlit dashboard (streamlit run app.py)
+app.py                       # Phase 4: legacy Streamlit dashboard (streamlit run app.py), superseded by api/+frontend/
+api/                          # Phase 6: FastAPI backend -- /api/* routes, plus serves frontend/dist/ itself (uvicorn api.main:app)
+  main.py                    # app instance, router registration, StaticFiles mount for the built frontend
+  routers/                   # tasks, calendar, planner, sessions, character, gear, focus
+  schemas.py                 # pydantic response/request models
+frontend/                     # Phase 6: Vite + React + TS web dashboard (npm run build -> dist/, served by api/main.py)
+  src/                       # App.tsx composes TodaySchedule, Planner, FocusTimerWidget, FocusStats, CharacterPanel, ArmoryPanel
 procrastination_tool/
   config.py                 # .env loading + scheduling config (working hours, busy calendars, etc.)
   calendar_bridge.py        # AppleScript Calendar read/write, busy-time queries, notion_id lookup
@@ -190,7 +208,30 @@ data/
   sessions.db                # Phase 2: focus session history (SQLite), read by both `focus history` and the dashboard
 ```
 
-## Reloading the sync agent (e.g. after changing the schedule time)
+## The sync LaunchAgent is currently disabled (2026-08-07)
+
+`scripts/sync_tasks.py` (what this LaunchAgent runs) calls `sync.run_sync()`,
+which includes `scheduler.schedule_tasks()` — the old automatic first-fit
+placer. An audit found it was still firing daily at 7am and on every login,
+auto-creating calendar blocks in silent competition with the manual
+drag-and-drop grid the React dashboard replaced it with. It's been unloaded
+(`launchctl unload`) and the installed copy removed from
+`~/Library/LaunchAgents/`; the source plist below is untouched in the repo.
+
+Stale/completed calendar blocks still get cleaned up without this agent —
+the dashboard's "🔄 Refresh (Notion + Calendar)" button calls
+`sync._reconcile_calendar_with_notion()` directly, which is only the
+cleanup half, not the auto-placement half.
+
+To re-enable full automatic scheduling (not recommended if you're using the
+manual grid — the two will compete for the same tasks again):
+
+```bash
+cp launchd/com.qinshuoshen.procrastination-tool.sync.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/501 ~/Library/LaunchAgents/com.qinshuoshen.procrastination-tool.sync.plist
+```
+
+## Reloading the sync agent (e.g. after changing the schedule time, once re-enabled)
 
 ```bash
 launchctl bootout gui/501/com.qinshuoshen.procrastination-tool.sync 2>/dev/null

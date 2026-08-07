@@ -1,0 +1,68 @@
+.planner {
+  text-align: left;
+  margin-bottom: 2rem;
+}
+
+.planner__header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.planner__header-row h2 {
+  text-align: left;
+  margin: 0;
+}
+
+.planner__refresh-button {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--code-bg);
+  color: var(--text-h);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.planner__refresh-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.planner__caption {
+  font-size: 0.85rem;
+  color: var(--text);
+  margin: 0.5rem 0 1rem;
+}
+
+.planner__error {
+  color: #d1425f;
+}
+
+.planner__refresh-summary {
+  font-size: 0.85rem;
+  color: var(--text);
+  font-style: italic;
+}
+
+.planner__loading,
+.planner__not-working-day {
+  color: var(--text);
+  font-style: italic;
+}
+
+.planner__grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+
+.planner__grid--busy {
+  opacity: 0.7;
+  pointer-events: none;
+}

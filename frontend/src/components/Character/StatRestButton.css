@@ -1,0 +1,35 @@
+.stat-rest-button {
+  flex: 1 1 140px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.stat-rest-button__name {
+  font-weight: 600;
+  color: var(--text-h);
+  margin: 0;
+}
+
+.stat-rest-button__level {
+  color: var(--text);
+  margin: 0;
+}
+
+.stat-rest-button__button {
+  font: inherit;
+  padding: 0.4rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+.stat-rest-button__button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -1,0 +1,11 @@
+/* Amber/warning tone (Streamlit's st.warning look) -- kept as its own
+   alpha-blended color rather than a shared CSS var since nothing else in
+   the app needs a "warning" semantic yet. */
+.bloodstain-banner {
+  background: rgba(217, 119, 6, 0.12);
+  border: 1px solid rgba(217, 119, 6, 0.5);
+  border-radius: 6px;
+  padding: 0.6rem 0.85rem;
+  margin: 0.75rem 0;
+  color: var(--text-h);
+}

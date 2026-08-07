@@ -1,0 +1,20 @@
+.draggable-task-box {
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--accent-border);
+  border-radius: 6px;
+  background: var(--accent-bg);
+  color: var(--text-h);
+  font-size: 0.9rem;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  line-height: 1.25;
+}
+
+.draggable-task-box:active {
+  cursor: grabbing;
+}
+
+.draggable-task-box--dragging {
+  opacity: 0.5;
+}

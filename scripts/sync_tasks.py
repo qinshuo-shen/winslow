@@ -4,6 +4,20 @@ LaunchAgent-driven daily wrapper around procrastination_tool.sync.run_sync()
 -- handles file logging, exit codes, and the completion notification. The
 actual Notion->Calendar sync logic lives in sync.py (shared with app.py's
 manual sync button), not here.
+
+**LaunchAgent unloaded 2026-08-07**: this script's `run_sync()` call includes
+scheduler.schedule_tasks() (the old automatic first-fit placer), which was
+found to still be firing daily/on-login and auto-creating calendar blocks in
+silent competition with the new manual drag-and-drop grid (React dashboard).
+The installed copy at `~/Library/LaunchAgents/com.qinshuoshen.procrastination-tool.sync.plist`
+has been `launchctl unload`ed and removed; the repo's own source copy at
+`launchd/com.qinshuoshen.procrastination-tool.sync.plist` is untouched, so
+re-enabling later is just re-copying it back and bootstrapping (see
+README.md's "Reloading the sync agent" section). This script itself is left
+on disk, working, and runnable manually -- but running it by hand will still
+auto-schedule blocks via scheduler.py, same as before. Use the dashboard's
+"Refresh (Notion + Calendar)" button instead for reconciliation-only cleanup
+(it calls sync._reconcile_calendar_with_notion() directly, not this script).
 """
 import sys
 from datetime import datetime

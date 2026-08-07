@@ -1,0 +1,60 @@
+.character-panel {
+  text-align: left;
+  margin-bottom: 2rem;
+}
+
+.character-panel h2 {
+  text-align: left;
+}
+
+.character-panel__metrics {
+  display: flex;
+  gap: 1rem;
+  margin: 1rem 0;
+  flex-wrap: wrap;
+}
+
+.character-panel__metric {
+  flex: 1 1 140px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6rem 0.85rem;
+  background: var(--code-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.character-panel__metric-label {
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.character-panel__metric-value {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.character-panel__caption {
+  font-size: 0.85rem;
+  color: var(--text);
+  font-style: italic;
+  margin: 0.75rem 0;
+}
+
+.character-panel__stats {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin: 1rem 0;
+}
+
+.character-panel__loading {
+  color: var(--text);
+  font-style: italic;
+}
+
+.character-panel__error {
+  color: #d1425f;
+}

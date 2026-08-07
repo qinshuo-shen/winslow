@@ -1,0 +1,25 @@
+/* Phase 2: replaces the Vite/React scaffold's placeholder hero styles
+   (hero/next-steps/etc, no longer referenced by App.tsx) with the actual
+   dashboard layout shell. Reuses the light/dark CSS custom properties
+   defined in index.css. */
+
+.dashboard {
+  text-align: left;
+  padding: 1.5rem 2rem 3rem;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.dashboard__header {
+  margin-bottom: 2rem;
+}
+
+.dashboard__header h1 {
+  text-align: left;
+  margin: 0 0 0.25rem;
+}
+
+.dashboard__date {
+  color: var(--text);
+  margin: 0;
+}

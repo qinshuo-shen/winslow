@@ -1,0 +1,60 @@
+{
+  "items": [
+    {
+      "id": "tarnished_blade",
+      "name": "Tarnished Blade",
+      "cost": 200,
+      "min_level": 0,
+      "flavor_text": "A worn sword, its edge dulled by countless small failures and small victories. Where every run starts."
+    },
+    {
+      "id": "estus_charm",
+      "name": "Estus Charm",
+      "cost": 400,
+      "min_level": 2,
+      "flavor_text": "Doesn't refill anything -- just a reminder that the flask is always there for the next attempt."
+    },
+    {
+      "id": "wolf_ring",
+      "name": "Ring of the Bloody Wolf",
+      "cost": 700,
+      "min_level": 4,
+      "flavor_text": "Grants no bonus. Worn by those who keep coming back to the same fight."
+    },
+    {
+      "id": "moonlight_page",
+      "name": "Moonlight Greatsword Fragment",
+      "cost": 1100,
+      "min_level": 6,
+      "flavor_text": "One shard of a legendary weapon. The rest, presumably, is still out there in the backlog."
+    },
+    {
+      "id": "silver_pendant",
+      "name": "Silver Pendant",
+      "cost": 1600,
+      "min_level": 8,
+      "flavor_text": "Wards off nothing in particular. Looks good next to the bonfire."
+    },
+    {
+      "id": "havels_greatshield",
+      "name": "Havel's Greatshield (Replica)",
+      "cost": 2200,
+      "min_level": 10,
+      "flavor_text": "Absurdly heavy. Carrying it anyway is the point."
+    },
+    {
+      "id": "crown_of_dusk",
+      "name": "Crown of Dusk",
+      "cost": 3000,
+      "min_level": 13,
+      "flavor_text": "Marks the wearer as someone who finishes what they start, most days."
+    },
+    {
+      "id": "elden_shard",
+      "name": "Shard of the Elden Ring",
+      "cost": 4000,
+      "min_level": 16,
+      "flavor_text": "Not the whole ring. Nobody has the whole ring. That's not really how any of this works."
+    }
+  ]
+}

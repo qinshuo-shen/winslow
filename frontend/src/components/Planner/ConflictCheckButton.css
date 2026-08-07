@@ -1,0 +1,29 @@
+.conflict-check {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.conflict-check__button {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--code-bg);
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+.conflict-check__button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.conflict-check__status {
+  font-size: 0.8rem;
+  color: var(--text);
+  font-style: italic;
+}

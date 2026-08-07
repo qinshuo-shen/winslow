@@ -64,6 +64,27 @@ def _run_applescript(script: str, timeout: int = 45) -> str:
     return result.stdout.strip()
 
 
+def _parse_records(raw: str, field_count: int) -> List[List[str]]:
+    """
+    Split AppleScript output produced by list_events()/list_all_events()/
+    list_busy_events() into records (RS = ASCII 30) and fields (FS = ASCII
+    31) -- see list_events()'s docstring for why control characters rather
+    than tab/linefeed. A record that doesn't have exactly field_count
+    fields is dropped rather than raising, same defensive behavior all
+    three callers already had independently before this was extracted into
+    one shared helper.
+    """
+    records = []
+    if raw:
+        for line in raw.split("\x1e"):
+            if not line:
+                continue
+            parts = line.split("\x1f")
+            if len(parts) == field_count:
+                records.append(parts)
+    return records
+
+
 def _as_date_literal(var_name: str, dt: datetime) -> str:
     # Building an AppleScript date via numeric year/month/day/hours/minutes
     # (instead of parsing a string with `date "..."`) is the reliable,
@@ -155,20 +176,13 @@ def list_events(day: datetime, calendar_name: str = FOCUS_CALENDAR_NAME) -> List
     )
     raw = _run_applescript(script)
     events = []
-    if raw:
-        for line in raw.split("\x1e"):
-            if not line:
-                continue
-            parts = line.split("\x1f")
-            if len(parts) != 5:
-                continue
-            uid, summary, start_s, end_s, notes = parts
-            events.append(CalendarEvent(
-                uid=uid, summary=summary,
-                start=datetime.fromisoformat(start_s),
-                end=datetime.fromisoformat(end_s),
-                notes=notes,
-            ))
+    for uid, summary, start_s, end_s, notes in _parse_records(raw, 5):
+        events.append(CalendarEvent(
+            uid=uid, summary=summary,
+            start=datetime.fromisoformat(start_s),
+            end=datetime.fromisoformat(end_s),
+            notes=notes,
+        ))
     return events
 
 
@@ -202,20 +216,13 @@ def list_all_events(calendar_name: str = FOCUS_CALENDAR_NAME) -> List[CalendarEv
     '''
     raw = _run_applescript(script)
     events = []
-    if raw:
-        for line in raw.split("\x1e"):
-            if not line:
-                continue
-            parts = line.split("\x1f")
-            if len(parts) != 5:
-                continue
-            uid, summary, start_s, end_s, notes = parts
-            events.append(CalendarEvent(
-                uid=uid, summary=summary,
-                start=datetime.fromisoformat(start_s),
-                end=datetime.fromisoformat(end_s),
-                notes=notes,
-            ))
+    for uid, summary, start_s, end_s, notes in _parse_records(raw, 5):
+        events.append(CalendarEvent(
+            uid=uid, summary=summary,
+            start=datetime.fromisoformat(start_s),
+            end=datetime.fromisoformat(end_s),
+            notes=notes,
+        ))
     return events
 
 
@@ -279,19 +286,12 @@ def list_busy_events(day: datetime, calendar_names: List[str]) -> List[BusyInter
     )
     raw = _run_applescript(script)
     intervals = []
-    if raw:
-        for line in raw.split("\x1e"):
-            if not line:
-                continue
-            parts = line.split("\x1f")
-            if len(parts) != 4:
-                continue
-            cal_name, summary, start_s, end_s = parts
-            intervals.append(BusyInterval(
-                start=datetime.fromisoformat(start_s),
-                end=datetime.fromisoformat(end_s),
-                calendar=cal_name, summary=summary,
-            ))
+    for cal_name, summary, start_s, end_s in _parse_records(raw, 4):
+        intervals.append(BusyInterval(
+            start=datetime.fromisoformat(start_s),
+            end=datetime.fromisoformat(end_s),
+            calendar=cal_name, summary=summary,
+        ))
     return intervals
 
 

@@ -1,0 +1,52 @@
+.task-pool-section {
+  margin-bottom: 1rem;
+}
+
+.task-pool__plus-row {
+  margin-bottom: 0.75rem;
+}
+
+.task-pool__plus-caption {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--text);
+  margin-bottom: 0.4rem;
+}
+
+.task-pool__plus-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.task-pool__plus-button {
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--code-bg);
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+.task-pool {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-height: 3rem;
+  padding: 0.6rem;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
+.task-pool--over {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.task-pool__empty {
+  color: var(--text);
+  font-style: italic;
+  margin: 0;
+}

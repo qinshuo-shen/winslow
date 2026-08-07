@@ -46,8 +46,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional, Tuple
 
-from . import notify, spin_wheel
-from .config import FOCUS_SESSION_MINUTES, PAUSE_FAIL_MINUTES, SESSION_DB_PATH
+from . import bloodstain, character, notify
+from .config import BLOODSTAIN_EXPIRY_HOURS, FOCUS_SESSION_MINUTES, PAUSE_FAIL_MINUTES, SESSION_DB_PATH
 
 OUTCOME_COMPLETED = "completed"
 OUTCOME_STOPPED_EARLY = "stopped_early"
@@ -73,6 +73,7 @@ class SessionResult:
     actual_minutes: float
     wheel_result: Optional[str]
     outcome: str = OUTCOME_COMPLETED
+    runes_awarded: int = 0
 
 
 @dataclass
@@ -86,26 +87,38 @@ class SessionRow:
     task_label: Optional[str]
     wheel_result: Optional[str]
     outcome: Optional[str]
+    runes_awarded: int
+    specific_project: Optional[str]
 
 
 def _connect() -> sqlite3.Connection:
     conn = sqlite3.connect(SESSION_DB_PATH)
     conn.execute(_SCHEMA)
-    try:
-        conn.execute("ALTER TABLE sessions ADD COLUMN outcome TEXT")
-    except sqlite3.OperationalError:
-        pass  # column already exists -- sqlite has no ADD COLUMN IF NOT EXISTS
+    # sqlite has no ADD COLUMN IF NOT EXISTS -- guarded ALTER TABLE is this
+    # project's established lazy-migration pattern (see `outcome` below).
+    for column_sql in (
+        "ALTER TABLE sessions ADD COLUMN outcome TEXT",
+        "ALTER TABLE sessions ADD COLUMN runes_awarded INTEGER",
+        "ALTER TABLE sessions ADD COLUMN specific_project TEXT",
+    ):
+        try:
+            conn.execute(column_sql)
+        except sqlite3.OperationalError:
+            pass  # column already exists
     return conn
 
 
 def log_session(start: datetime, end: datetime, planned_minutes: float, actual_minutes: float,
-                 outcome: str, task_label: Optional[str], wheel_result: Optional[str]) -> None:
+                 outcome: str, task_label: Optional[str], wheel_result: Optional[str],
+                 runes_awarded: int = 0, specific_project: Optional[str] = None) -> None:
     with closing(_connect()) as conn:
         conn.execute(
             "INSERT INTO sessions (start_time, end_time, planned_minutes, actual_minutes, "
-            "completed, task_label, wheel_result, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "completed, task_label, wheel_result, outcome, runes_awarded, specific_project) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (start.isoformat(), end.isoformat(), planned_minutes, actual_minutes,
-             int(outcome == OUTCOME_COMPLETED), task_label, wheel_result, outcome),
+             int(outcome == OUTCOME_COMPLETED), task_label, wheel_result, outcome,
+             runes_awarded, specific_project),
         )
         conn.commit()
 
@@ -122,7 +135,8 @@ def get_recent_sessions(limit: int = 10) -> List[SessionRow]:
             end_time=datetime.fromisoformat(r["end_time"]), planned_minutes=r["planned_minutes"],
             actual_minutes=r["actual_minutes"], completed=bool(r["completed"]),
             task_label=r["task_label"], wheel_result=r["wheel_result"],
-            outcome=r["outcome"],
+            outcome=r["outcome"], runes_awarded=r["runes_awarded"] or 0,
+            specific_project=r["specific_project"],
         )
         for r in rows
     ]
@@ -227,7 +241,16 @@ def _run_noninteractive(duration_minutes: float) -> Tuple[str, float]:
 
 
 def run_focus_session(duration_minutes: float = FOCUS_SESSION_MINUTES,
-                       task_label: Optional[str] = None) -> SessionResult:
+                       task_label: Optional[str] = None,
+                       priority: Optional[str] = None,
+                       specific_project: Optional[str] = None) -> SessionResult:
+    """
+    `priority` and `specific_project` come from a real linked Notion task
+    (see focus_cli.py's `focus start --pick`, notion_tasks.Task) when
+    available -- they drive the Rune award multiplier and questline
+    progress. A free-text `--task` label with no linked task leaves both
+    None, which still earns Runes at the DEFAULT_RUNE_MULTIPLIER rate.
+    """
     start = datetime.now()
     label_suffix = f" on {task_label!r}" if task_label else ""
 
@@ -241,24 +264,70 @@ def run_focus_session(duration_minutes: float = FOCUS_SESSION_MINUTES,
         outcome, worked_seconds = _run_noninteractive(duration_minutes)
 
     end = datetime.now()
-    actual_minutes = worked_seconds / 60
+    return finalize_session(start, end, duration_minutes, worked_seconds, outcome,
+                             task_label, priority, specific_project)
 
-    wheel_result = None
+
+def finalize_session(start: datetime, end: datetime, duration_minutes: float,
+                      worked_seconds: float, outcome: str, task_label: Optional[str],
+                      priority: Optional[str], specific_project: Optional[str]) -> SessionResult:
+    """
+    Shared tail end of a focus session -- reward/bloodstain/questline
+    progress, the completion notification, and the DB log row. Split out
+    of run_focus_session() (Phase 5, web migration) so the web session
+    manager (focus_session_manager.py) can drive the same reward/logging
+    logic from its own polling-based state machine, without depending on
+    run_focus_session()'s blocking terminal loop (_run_interactive/
+    _run_noninteractive) at all. The CLI still reaches this via
+    run_focus_session(); this function's own body is unchanged from what
+    used to live inline there.
+    """
+    actual_minutes = worked_seconds / 60
+    runes_awarded = 0
+    reward_note = None
+
     if outcome == OUTCOME_COMPLETED:
-        wheel_result = spin_wheel.spin()
-        print(f"\nSession complete! Your reward: {wheel_result}")
-        notify.send_notification("Focus session complete", wheel_result, subtitle="Nice work!")
+        runes_awarded = character.calculate_rune_award(priority, actual_minutes)
+        new_balance = character.award_runes(runes_awarded)
+        reward_note = f"+{runes_awarded} Runes (balance: {new_balance})"
+
+        recovered = bloodstain.recover_active_bloodstain()
+        if recovered:
+            character.award_runes(recovered)
+            reward_note += f" -- recovered a bloodstain worth {recovered} Runes"
+
+        if specific_project:
+            questline_note = _record_questline_progress(specific_project)
+            if questline_note:
+                reward_note += f" -- {questline_note}"
+
+        print(f"\nSession complete! {reward_note}")
+        notify.send_notification("Focus session complete", reward_note, subtitle="Nice work!")
     elif outcome == OUTCOME_FAILED_PAUSE_TIMEOUT:
-        print(f"Logged {actual_minutes:.1f} min worked -- paused too long, session failed (no reward).")
+        lost_runes = character.calculate_rune_award(priority, actual_minutes)
+        bloodstain.create_bloodstain(lost_runes, session_id=None)
+        print(f"Logged {actual_minutes:.1f} min worked -- paused too long, session failed. "
+              f"{lost_runes} Runes left in a bloodstain, recoverable by your next completed "
+              f"session (within {BLOODSTAIN_EXPIRY_HOURS}h).")
         notify.send_notification(
             "Focus session failed",
-            f"Paused over {PAUSE_FAIL_MINUTES:g} min -- no reward",
+            f"Paused over {PAUSE_FAIL_MINUTES:g} min -- {lost_runes} Runes in a bloodstain",
             subtitle=f"{actual_minutes:.1f} min logged",
         )
     else:
         print(f"Logged {actual_minutes:.1f} min (incomplete, no reward this time).")
         notify.send_notification("Focus session ended early", f"{actual_minutes:.1f} min logged")
 
-    log_session(start, end, duration_minutes, actual_minutes, outcome, task_label, wheel_result)
+    log_session(start, end, duration_minutes, actual_minutes, outcome, task_label,
+                wheel_result=None, runes_awarded=runes_awarded, specific_project=specific_project)
     return SessionResult(completed=(outcome == OUTCOME_COMPLETED), actual_minutes=actual_minutes,
-                          wheel_result=wheel_result, outcome=outcome)
+                          wheel_result=None, outcome=outcome, runes_awarded=runes_awarded)
+
+
+def _record_questline_progress(specific_project: str) -> Optional[str]:
+    """Populated in Phase F (questlines.py) -- returns a human-readable
+    note if a questline milestone was hit, else None. Import is deferred so
+    focus_timer.py doesn't hard-depend on questlines.py's own DB writes
+    happening before this module is otherwise fully usable."""
+    from . import questlines
+    return questlines.record_questline_progress(specific_project)

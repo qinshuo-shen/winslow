@@ -1,0 +1,47 @@
+.focus-stats {
+  text-align: left;
+  margin-bottom: 2rem;
+}
+
+.focus-stats h2 {
+  text-align: left;
+}
+
+.focus-stats__metrics {
+  display: flex;
+  gap: 1rem;
+  margin: 1rem 0;
+  flex-wrap: wrap;
+}
+
+.focus-stats__metric {
+  flex: 1 1 140px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6rem 0.85rem;
+  background: var(--code-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.focus-stats__metric-label {
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.focus-stats__metric-value {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.focus-stats__empty,
+.focus-stats__loading {
+  color: var(--text);
+  font-style: italic;
+}
+
+.focus-stats__error {
+  color: #d1425f;
+}

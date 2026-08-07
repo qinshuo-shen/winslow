@@ -11,7 +11,13 @@ dependencies = [
 [project.optional-dependencies]
 # Only the dashboard needs this -- the LaunchAgent-driven background
 # automation (sync_tasks.py, smoke_test.py) and the `focus` CLI don't.
-dashboard = ["streamlit>=1.30"]
+dashboard = ["streamlit>=1.30", "streamlit-sortables>=0.3.1"]
+
+# Phase 1 of the Streamlit -> React+FastAPI migration: the new read-only
+# `api/` package (sibling to procrastination_tool/ and app.py) that the
+# React frontend calls. Doesn't touch the `dashboard` group above -- app.py
+# stays on disk, untouched, same fallback convention as spin_wheel.py.
+api = ["fastapi>=0.115", "uvicorn>=0.30", "pydantic>=2.0"]
 
 [project.scripts]
 focus = "procrastination_tool.focus_cli:main"

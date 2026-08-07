@@ -1,0 +1,106 @@
+.focus-timer {
+  text-align: left;
+  margin-bottom: 2rem;
+}
+
+.focus-timer h2 {
+  text-align: left;
+}
+
+.focus-timer__error {
+  color: #d1425f;
+}
+
+.focus-timer__loading {
+  color: var(--text);
+  font-style: italic;
+}
+
+.focus-timer__result {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6rem 0.85rem;
+  background: var(--code-bg);
+  color: var(--text-h);
+  margin-bottom: 1rem;
+}
+
+.focus-timer__form {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.focus-timer__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.focus-timer__field input {
+  font: inherit;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--code-bg);
+  color: var(--text-h);
+  min-width: 10rem;
+}
+
+.focus-timer__form button,
+.focus-timer__actions button {
+  font: inherit;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+.focus-timer__form button:disabled,
+.focus-timer__actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.focus-timer__active {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  flex-wrap: wrap;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.85rem 1rem;
+  background: var(--code-bg);
+}
+
+.focus-timer__countdown {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-h);
+  font-variant-numeric: tabular-nums;
+}
+
+.focus-timer__task-label {
+  color: var(--text);
+  font-style: italic;
+}
+
+.focus-timer__active--paused .focus-timer__paused-label {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #d1425f;
+}
+
+.focus-timer__actions {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.focus-timer__stop {
+  border-color: #d1425f !important;
+}

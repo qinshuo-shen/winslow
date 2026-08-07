@@ -30,7 +30,7 @@ in any query result at all).
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional
 
-from . import calendar_bridge, notion_tasks, scheduler
+from . import block_grid, calendar_bridge, notion_tasks, scheduler
 from .calendar_bridge import CalendarEvent
 from .notion_tasks import Task
 from .scheduler import Placement
@@ -45,7 +45,14 @@ class SyncResult:
 
 
 def _build_notes(task: Task) -> str:
-    return f"notion_id:{task.page_id}\nPriority: {task.priority}\nDue: {task.due.isoformat()}\n{task.url}"
+    # Deliberately still labeled "Due:" here (and _parse_notes below still
+    # keys it "due") even though the Python attribute is task.start_date --
+    # this is the Calendar.app notes wire format, invisible to the user,
+    # and your one real existing calendar block is already tagged this way.
+    # Renaming the wire format would make _reconcile_calendar_with_notion
+    # see every real existing block as "changed" and delete it. See
+    # notion_tasks.py's module docstring (2026-08-07 note) for the full story.
+    return f"notion_id:{task.page_id}\nPriority: {task.priority}\nDue: {task.start_date.isoformat()}\n{task.url}"
 
 
 def _parse_notes(notes: str) -> dict:
@@ -69,7 +76,19 @@ def _reconcile_calendar_with_notion(log_fn: Callable[[str], None]) -> int:
         if not page_id:
             continue  # not one of ours -- shouldn't happen in this calendar, but don't touch what we didn't tag
 
-        live = notion_tasks.get_live_task_snapshot(page_id)
+        # get_live_task_snapshot() only returns None for a genuine 404 (see
+        # its own docstring) -- anything else it raises is a transient
+        # failure to *check* this one task, not evidence it's gone. Caught
+        # per-event, not around the whole loop, so one bad lookup skips just
+        # that event's block instead of leaving every other block
+        # unreconciled for the rest of this run.
+        try:
+            live = notion_tasks.get_live_task_snapshot(page_id)
+        except Exception as e:
+            log_fn(f"Couldn't verify {ev.summary!r} (page_id={page_id}) this run, "
+                   f"leaving its block untouched: {e!r}")
+            continue
+
         reason: Optional[str] = None
         if live is None:
             reason = "task no longer exists / archived / not actionable (done, discarded, or missing priority/date)"
@@ -77,14 +96,32 @@ def _reconcile_calendar_with_notion(log_fn: Callable[[str], None]) -> int:
             reason = f"name changed ({ev.summary!r} -> {live.name!r})"
         elif tag["priority"] != live.priority:
             reason = f"priority changed ({tag['priority']} -> {live.priority})"
-        elif tag["due"] != live.due.isoformat():
-            reason = f"due date changed ({tag['due']} -> {live.due.isoformat()})"
+        elif tag["due"] != live.start_date.isoformat():
+            reason = f"start date changed ({tag['due']} -> {live.start_date.isoformat()})"
 
         if reason:
             calendar_bridge.delete_event_by_uid(ev.uid)
             removed += 1
             log_fn(f"Removed stale block for {ev.summary!r}: {reason}")
 
+    return removed
+
+
+def complete_task_and_cleanup(page_id: str) -> int:
+    """Mark a Notion task Completed and delete every Focus-Blocks calendar
+    event tagged with its page_id, wherever/however many there are. Mirrors
+    app.py's "✓ Done" button logic exactly (mark completed, then walk the
+    calendar snapshot deleting any block tagged with this task), extracted
+    here as a proper reusable function per this module's established
+    "extract shared orchestration" pattern (see this module's own docstring
+    and _reconcile_calendar_with_notion) rather than living inline in the
+    FastAPI router. Returns the number of calendar blocks removed."""
+    notion_tasks.mark_task_completed(page_id)
+    removed = 0
+    for ev in calendar_bridge.list_all_events():
+        if block_grid.parse_notion_id(ev.notes) == page_id:
+            calendar_bridge.delete_event_by_uid(ev.uid)
+            removed += 1
     return removed
 
 

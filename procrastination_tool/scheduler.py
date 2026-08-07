@@ -152,10 +152,10 @@ def schedule_tasks(tasks: List[Task], start_day: Optional[date] = None,
 
     Day-skip guard (2026-08-03, same-day follow-up): now that
     notion_tasks.fetch_actionable_tasks() looks ahead through the end of
-    the week instead of only Date <= today, a task can reach this function
-    before its own start date arrives. Any `day` earlier than `task.due`
-    is skipped for that task -- it's visible for scheduling, but still
-    can't be *placed* before its start date.
+    the week instead of only start_date <= today, a task can reach this
+    function before its own start date arrives. Any `day` earlier than
+    `task.start_date` is skipped for that task -- it's visible for
+    scheduling, but still can't be *placed* before its start date.
     """
     start_day = start_day or date.today()
     now = _round_up_to_next(now or datetime.now())
@@ -187,9 +187,10 @@ def schedule_tasks(tasks: List[Task], start_day: Optional[date] = None,
             # instead.
             if day.weekday() == SUNDAY and not task_is_light:
                 continue
-            if day < task.due:
-                # Date is the task's *start* date, not a deadline (see
-                # notion_tasks.py). fetch_actionable_tasks() now looks ahead
+            if day < task.start_date:
+                # start_date is the task's start date, not a deadline (see
+                # notion_tasks.py) -- there is no deadline concept in this
+                # database. fetch_actionable_tasks() now looks ahead
                 # through the end of the week, so a task can arrive here
                 # before its own start date -- it's visible for scheduling,
                 # but still can't be *placed* until that date, so skip

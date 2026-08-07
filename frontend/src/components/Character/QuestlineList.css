@@ -1,0 +1,16 @@
+.questline-list {
+  margin-top: 1.5rem;
+}
+
+.questline-list__list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.questline-list__list li {
+  color: var(--text);
+}
