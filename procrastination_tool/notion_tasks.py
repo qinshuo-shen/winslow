@@ -194,6 +194,15 @@ def _first_multi_select(prop: dict) -> Optional[str]:
     return options[0]["name"] if options else None
 
 
+def _all_multi_select(prop: dict) -> List[str]:
+    """Every value of a multi_select property, in Notion's own order --
+    used by fetch_all_tasks() for the full tag extraction (unlike
+    _first_multi_select, which is Priority/questline-generating logic
+    predating tags and deliberately keeps only one value)."""
+    options = (prop or {}).get("multi_select") or []
+    return [o["name"] for o in options]
+
+
 def _end_of_week(today: date) -> date:
     """
     The coming Sunday -- this project's last working day, see
@@ -279,6 +288,90 @@ def fetch_actionable_tasks(today: Optional[date] = None) -> List[Task]:
         return (rank, t.start_date)
 
     tasks.sort(key=sort_key)
+    return tasks
+
+
+class TaskWithStatus(NamedTuple):
+    """Same shape as Task, plus the raw Notion status string -- a separate
+    NamedTuple rather than adding a field to Task itself, since Task's
+    exact field set is spread directly into TaskOut via `**t._asdict()`
+    (api/routers/tasks.py) and callers of fetch_actionable_tasks() (the
+    live app's only consumer of Task) don't need or expect a status field
+    (fetch_actionable_tasks() already filters to a fixed status set).
+
+    `tags` (second same-day follow-up) folds together two different Notion
+    properties that both read as "tags" to the user: 'Block' (a single-
+    select life-area category -- Research/Coursework/ASPARi operation/
+    Teaching and Supervision/Personal and Service/Other, confirmed against
+    the real database) and every value of 'Specific Project' (multi-select,
+    ~48 options in the real database -- specific_project above only keeps
+    the *first* one for questline-tracking compatibility, so anything
+    beyond that would otherwise be silently dropped on migration)."""
+
+    page_id: str
+    name: str
+    priority: Optional[str]
+    start_date: Optional[date]
+    notes: str
+    url: str
+    specific_project: Optional[str]
+    status: Optional[str]
+    tags: List[str]
+
+
+def fetch_all_tasks() -> List[TaskWithStatus]:
+    """
+    Every non-archived task in the Notion database, regardless of status,
+    Priority, or start date -- used once by migrate_notion_tasks.py for a
+    full extraction into the native tasks table (procrastination_tool.
+    tasks), NOT by the live app. fetch_actionable_tasks() deliberately
+    excludes On-hold/Discarded/Completed tasks and anything without a
+    Priority or a start date <= this week -- exactly wrong for "pull
+    everything so nothing is silently left behind in Notion." A task with
+    no Priority (the long-term-milestone case documented in this module's
+    docstring) or no start date is still included here -- the caller
+    decides how to handle those (see migrate_notion_tasks.py).
+
+    No `Completed`/`Start on`/`Priority` filter at all -- only Notion's own
+    archived/trashed state excludes a page, same as get_live_task_snapshot's
+    "gone" check.
+    """
+    client = Client(auth=NOTION_TOKEN)
+    data_source_id = _get_data_source_id(client)
+
+    tasks: List[TaskWithStatus] = []
+    cursor = None
+    while True:
+        kwargs = {"data_source_id": data_source_id, "page_size": 100}
+        if cursor:
+            kwargs["start_cursor"] = cursor
+        res = client.data_sources.query(**kwargs)
+        for row in res["results"]:
+            if row.get("archived") or row.get("in_trash"):
+                continue
+            props = row["properties"]
+            name_prop = props.get("Name", {}).get("title", [])
+            priority_prop = props.get("Priority", {}).get("select")
+            completed_prop = props.get("Completed", {}).get("select")
+            block_prop = props.get("Block", {}).get("select")
+            tags = _all_multi_select(props.get("Specific Project"))
+            if block_prop:
+                tags = [block_prop["name"]] + tags
+            tasks.append(TaskWithStatus(
+                page_id=row["id"],
+                name=_plain_text(name_prop) or "(untitled)",
+                priority=priority_prop["name"] if priority_prop else None,
+                start_date=_parse_date(props.get("Start on", {})),
+                notes=_plain_text(props.get("Notes", {}).get("rich_text", [])),
+                url=row.get("url", ""),
+                specific_project=_first_multi_select(props.get("Specific Project")),
+                status=completed_prop["name"] if completed_prop else None,
+                tags=tags,
+            ))
+        if not res.get("has_more"):
+            break
+        cursor = res.get("next_cursor")
+
     return tasks
 
 

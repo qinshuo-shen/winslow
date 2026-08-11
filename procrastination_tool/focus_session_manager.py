@@ -24,15 +24,29 @@ run_focus_session() (the CLI path) now also calls. That's the whole point
 of Phase 5's focus_timer.py refactor: this manager and the CLI share one
 "what happens when a session ends" implementation, they just differ in
 how they drive a session to that end.
+
+Same-day follow-up: "hardcore" sessions (5/5.1 in the redesign plan) --
+`start(hardcore=True)` books a real event on the user's own Exchange
+calendar (calendar_bridge.create_event with config.EXCHANGE_CALENDAR_NAME,
+not the local FOCUS_CALENDAR_NAME this tool owns) for the planned
+duration, so it shows as busy to anyone else looking at that calendar.
+On a genuine completion the event is left as-is (it already matches the
+time actually spent). On a manual stop or a pause-timeout failure, the
+event is deleted in _finalize_locked -- no reason to keep the user's
+calendar blocked for time they didn't end up using. The calendar write
+itself is best-effort: a failure there (AppleScript error, misconfigured
+EXCHANGE_CALENDAR_NAME) surfaces as a ValueError from start() so it's
+visible immediately, rather than silently starting a "hardcore" session
+that never actually blocked anything.
 """
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
-from . import focus_timer
-from .config import PAUSE_FAIL_MINUTES
+from . import calendar_bridge, focus_timer
+from .config import EXCHANGE_CALENDAR_NAME, PAUSE_FAIL_MINUTES
 
 
 @dataclass
@@ -47,6 +61,8 @@ class FocusSessionState:
     running_since: Optional[float] = None   # time.monotonic(), set only while status == "running"
     paused_since: Optional[float] = None    # time.monotonic(), set only while status == "paused"
     last_result: Optional[focus_timer.SessionResult] = None  # most recent finished session, until next start()
+    hardcore: bool = False
+    hardcore_event_uid: Optional[str] = None  # set only while a hardcore session's calendar block is live
 
 
 class FocusSessionManager:
@@ -54,14 +70,32 @@ class FocusSessionManager:
         self._lock = threading.Lock()
         self._state = FocusSessionState()
 
-    def start(self, duration_minutes, task_label, priority, specific_project) -> FocusSessionState:
+    def start(self, duration_minutes, task_label, priority, specific_project, hardcore=False) -> FocusSessionState:
         with self._lock:
             if self._state.status != "idle":
                 raise ValueError("A session is already running or paused")
+
+            hardcore_event_uid = None
+            if hardcore:
+                if not EXCHANGE_CALENDAR_NAME:
+                    raise ValueError(
+                        "Hardcore sessions need EXCHANGE_CALENDAR_NAME set in .env first"
+                    )
+                start = datetime.now()
+                try:
+                    hardcore_event_uid = calendar_bridge.create_event(
+                        f"Focus: {task_label or 'Deep work'}",
+                        start, start + timedelta(minutes=duration_minutes),
+                        calendar_name=EXCHANGE_CALENDAR_NAME,
+                    )
+                except Exception as e:
+                    raise ValueError(f"Couldn't block your calendar for this hardcore session: {e}")
+
             self._state = FocusSessionState(
                 status="running", start_time=datetime.now(), duration_minutes=duration_minutes,
                 task_label=task_label, priority=priority, specific_project=specific_project,
                 running_since=time.monotonic(),
+                hardcore=hardcore, hardcore_event_uid=hardcore_event_uid,
             )
             return self._state
 
@@ -128,6 +162,15 @@ class FocusSessionManager:
             s.start_time, end, s.duration_minutes, worked_seconds, outcome,
             s.task_label, s.priority, s.specific_project,
         )
+        if s.hardcore_event_uid and outcome != focus_timer.OUTCOME_COMPLETED:
+            # Stopped early or pause-timeout failed -- free the calendar
+            # time the user didn't end up using. Best-effort: an
+            # AppleScript hiccup here shouldn't block finalizing the
+            # session itself, so it's swallowed rather than raised.
+            try:
+                calendar_bridge.delete_event_by_uid(s.hardcore_event_uid, calendar_name=EXCHANGE_CALENDAR_NAME)
+            except Exception:
+                pass
         self._state = FocusSessionState(status="idle", last_result=result)
         return result
 

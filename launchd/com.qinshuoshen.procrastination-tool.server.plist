@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.qinshuoshen.procrastination-tool.server</string>
+
+    <!-- Persistent server mode (2026-08-11): unlike sync.plist's daily
+         StartCalendarInterval, this LaunchAgent runs the FastAPI app
+         continuously so another Mac on the same network can use it as a
+         client over the browser -- one shared data/sessions.db instead of
+         each machine keeping its own. KeepAlive relaunches it if it ever
+         exits/crashes; RunAtLoad starts it the moment this Mac's GUI
+         session comes up (login or a manual `launchctl bootstrap`). -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- --host 0.0.0.0 is required -- uvicorn's default (127.0.0.1) only
+         accepts connections from this same machine, which defeats the
+         point. api/main.py serves the built frontend/dist itself (see its
+         StaticFiles mount), so this one process is both the API and the
+         web UI -- run `cd frontend && npm run build` first, same as any
+         other production deploy of this app. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/qinshuoshen/Developer/procrastination-tool/.venv/bin/uvicorn</string>
+        <string>api.main:app</string>
+        <string>--host</string>
+        <string>0.0.0.0</string>
+        <string>--port</string>
+        <string>8000</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/qinshuoshen/Developer/procrastination-tool</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/qinshuoshen/Developer/procrastination-tool/logs/launchd_server.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/qinshuoshen/Developer/procrastination-tool/logs/launchd_server.err.log</string>
+</dict>
+</plist>

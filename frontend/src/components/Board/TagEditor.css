@@ -1,0 +1,63 @@
+.tag-editor__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.tag-editor__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: var(--code-bg);
+  color: var(--text-h);
+  border: 1px solid var(--border);
+}
+
+.tag-editor__chip-remove {
+  background: none;
+  border: none;
+  color: var(--text);
+  opacity: 0.65;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.tag-editor__chip-remove:hover {
+  opacity: 1;
+}
+
+.tag-editor__form {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.tag-editor__form input {
+  flex: 1;
+  padding: 0.35rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+  font-size: 0.85rem;
+}
+
+.tag-editor__form button {
+  padding: 0.35rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.tag-editor__form button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

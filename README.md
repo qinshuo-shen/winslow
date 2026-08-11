@@ -33,6 +33,36 @@ process to be granted through. If you ever want this project synced/backed up,
 sync `~/Developer/procrastination-tool` some other way (e.g. a git remote) rather
 than moving it back under iCloud Drive.
 
+## Running as a persistent server (e.g. on a Mac mini, for access from another Mac)
+
+**2026-08-11.** The app is single-database (`data/sessions.db`, SQLite) and Calendar/notification automation is inherently tied to whichever Mac actually runs it — two independent copies syncing that file (iCloud/Syncthing) is a real corruption risk (see "Project location" above for why this project already avoids iCloud Drive for background processes), so the supported way to use this from more than one Mac is **one machine runs the server, everything else is just a browser client** — not two independent installs kept in sync.
+
+`api/main.py` already serves the built frontend itself (`frontend/dist/`, via `StaticFiles`) alongside the API from the same FastAPI process and same origin, so there's no CORS configuration needed — a browser on another device just points at the server machine's address and gets both the UI and the API from one port.
+
+Setup, on whichever Mac will be the server (a Mac mini is a natural fit — normally on, rarely closed/asleep like a laptop):
+
+```bash
+cd ~/Developer/procrastination-tool          # same non-iCloud-Drive location, see above
+python3 -m venv .venv
+./.venv/bin/pip install -e ".[api]"
+cd frontend && npm install && npm run build && cd ..
+
+cp .env.example .env    # then fill in real values -- FOCUS_CALENDAR_NAME, EXCHANGE_CALENDAR_NAME,
+                         # BUSY_CALENDARS, etc. Calendar.app on THIS machine needs the same
+                         # iCloud/Exchange accounts added (System Settings -> Internet Accounts)
+                         # for calendar names to match and for calendar-bridge writes to reach
+                         # the same calendars you see on your other Mac.
+
+cp launchd/com.qinshuoshen.procrastination-tool.server.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.qinshuoshen.procrastination-tool.server.plist
+```
+
+- **First run needs a logged-in GUI session, not just SSH.** Calendar/Notification permission dialogs (macOS TCC) can only be approved by clicking through them once, interactively — the same one-time-dialog behavior documented in "What Phase 0 proved" below. `launchctl kickstart -k gui/$(id -u) com.qinshuoshen.procrastination-tool.server` after logging in triggers this.
+- **Copy your real `data/sessions.db` over once** (it's gitignored, so `git clone`/`git pull` won't bring it) — from that point on, the server machine's copy is the single source of truth; don't keep running the app locally on your other Mac against its own separate copy.
+- **Prevent the server Mac from sleeping** (System Settings → Energy → uncheck "Put hard disks/display to sleep" or equivalent) — `KeepAlive` in the plist relaunches a crashed process, but can't wake a sleeping machine.
+- **Reach it from another device**: `http://<server-hostname>.local:8000` on the same network (find the hostname via `scutil --get LocalHostName` on the server Mac), or its LAN IP directly. For access away from home, put it behind a VPN like Tailscale rather than exposing port 8000 to the public internet — this app has no authentication layer.
+- To reload after editing the plist: `launchctl bootout gui/$(id -u)/com.qinshuoshen.procrastination-tool.server 2>/dev/null` then re-run the `bootstrap` line above.
+
 ## Setup
 
 ```bash

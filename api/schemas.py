@@ -206,6 +206,10 @@ class FocusStateOut(BaseModel):
     paused_seconds: Optional[float] = None
     pause_auto_fail_in_seconds: Optional[float] = None
     last_result: Optional[SessionResultOut] = None
+    # Same-day follow-up: "hardcore" sessions block a real calendar event
+    # (see focus_session_manager.py) -- surfaced so the frontend can show
+    # an indicator on a running hardcore session.
+    hardcore: bool = False
 
 
 class FocusStartRequest(BaseModel):
@@ -215,3 +219,105 @@ class FocusStartRequest(BaseModel):
     task_label: Optional[str] = None
     priority: Optional[str] = None
     specific_project: Optional[str] = None
+    hardcore: bool = False
+
+
+# 2026-08-11 redesign: native task backlog (replaces Notion) + the
+# proactive-nudge "Now" surface.
+
+
+class BacklogTaskOut(BaseModel):
+    id: int
+    name: str
+    priority: str
+    effort_minutes: int
+    notes: str
+    status: str
+    created_at: datetime
+    specific_project: Optional[str] = None
+    is_today: bool = False
+    position: int = 0
+    completed_at: Optional[datetime] = None
+    tags: List[str] = []
+
+
+class BacklogTaskCreateRequest(BaseModel):
+    name: str
+    priority: str
+    notes: str = ""
+    specific_project: Optional[str] = None
+    tags: List[str] = []
+
+
+class BacklogTaskUpdateRequest(BaseModel):
+    """Body for PATCH /api/backlog/{id} -- the Board's generic partial
+    update (status change, quadrant move, Today/Pool toggle, reorder,
+    notes/tags edit). Every field is optional; only fields explicitly set
+    are changed (see procrastination_tool.tasks.update_task). `tags`, if
+    present, REPLACES the task's full tag set (not a merge) -- the
+    frontend always sends the complete desired list."""
+
+    name: Optional[str] = None
+    priority: Optional[str] = None
+    notes: Optional[str] = None
+    status: Optional[str] = None
+    specific_project: Optional[str] = None
+    is_today: Optional[bool] = None
+    position: Optional[int] = None
+    tags: Optional[List[str]] = None
+
+
+
+# Same-day follow-up: end-of-day evaluation + mood tracker (3/3.1/3.2).
+
+
+class MoodEntryOut(BaseModel):
+    id: int
+    ts: datetime
+    mood_score: int
+    note: str
+
+
+class MoodCreateRequest(BaseModel):
+    """Body for POST /api/mood."""
+
+    mood_score: int
+    note: str = ""
+
+
+class DailyEvaluationOut(BaseModel):
+    date: date
+    generated_at: datetime
+    sessions_count: int
+    focused_minutes: float
+    completion_rate: Optional[float]
+    tasks_completed_count: int
+    runes_earned: int
+    mood_avg: Optional[float]
+    mood_entries: List[MoodEntryOut]
+    tasks_completed_names: List[str]
+    quadrant_breakdown: Dict[str, int]
+
+
+class EvaluationGenerateRequest(BaseModel):
+    """Body for POST /api/evaluation/generate. `date` defaults to today
+    (server-side) when omitted."""
+
+    date: Optional[date] = None
+
+
+class NowOut(BaseModel):
+    """GET /api/now's response -- a snapshot of proactive_scheduler's
+    persisted nudge state plus the task it refers to, or status="idle" with
+    task=None if there's nothing currently nudged (either outside the cue
+    window, a session is already running, or the backlog is empty)."""
+
+    status: str  # "idle" | "pending_start"
+    task: Optional[BacklogTaskOut] = None
+    auto_start_in_seconds: Optional[float] = None
+    swap_count: int = 0
+    max_swaps: int = 0
+    # Phase 3: the task's actual binding deadline (engagement, not
+    # completion -- see deadlines.py) -- distinct from
+    # auto_start_in_seconds, which is just the nudge's own grace countdown.
+    deadline_at: Optional[datetime] = None

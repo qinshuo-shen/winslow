@@ -90,6 +90,26 @@
   font-style: italic;
 }
 
+.focus-timer__field--checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.focus-timer__field--checkbox input {
+  min-width: 0;
+  padding: 0;
+}
+
+.focus-timer__hardcore-badge {
+  font-size: 0.8rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-border);
+  color: var(--text-h);
+}
+
 .focus-timer__active--paused .focus-timer__paused-label {
   font-size: 1.1rem;
   font-weight: 600;

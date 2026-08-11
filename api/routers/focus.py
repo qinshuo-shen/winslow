@@ -57,6 +57,7 @@ def _build_focus_state_out(state: FocusSessionState) -> FocusStateOut:
         paused_seconds=paused_seconds,
         pause_auto_fail_in_seconds=pause_auto_fail_in_seconds,
         last_result=last_result,
+        hardcore=state.hardcore,
     )
 
 
@@ -74,6 +75,7 @@ def start_focus_session(body: FocusStartRequest) -> FocusStateOut:
             task_label=body.task_label,
             priority=body.priority,
             specific_project=body.specific_project,
+            hardcore=body.hardcore,
         )
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))

@@ -47,6 +47,7 @@ export function FocusTimerWidget({ onSessionEnd }: FocusTimerWidgetProps) {
   const { refetchCharacter } = useAppData();
   const [duration, setDuration] = useState("25");
   const [taskLabel, setTaskLabel] = useState("");
+  const [hardcore, setHardcore] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -84,6 +85,7 @@ export function FocusTimerWidget({ onSessionEnd }: FocusTimerWidgetProps) {
     const body: FocusStartRequest = {
       duration_minutes: minutes,
       task_label: taskLabel.trim() || null,
+      hardcore,
     };
     runAction(() => apiPost<FocusStateOut>("/focus/start", body));
   }
@@ -125,6 +127,15 @@ export function FocusTimerWidget({ onSessionEnd }: FocusTimerWidgetProps) {
               disabled={pending}
             />
           </label>
+          <label className="focus-timer__field focus-timer__field--checkbox">
+            <input
+              type="checkbox"
+              checked={hardcore}
+              onChange={(e) => setHardcore(e.target.checked)}
+              disabled={pending}
+            />
+            <span>🔒 Hardcore (block my calendar)</span>
+          </label>
           <button type="submit" disabled={pending}>
             Start
           </button>
@@ -139,6 +150,7 @@ export function FocusTimerWidget({ onSessionEnd }: FocusTimerWidgetProps) {
           {state.task_label && (
             <span className="focus-timer__task-label">on "{state.task_label}"</span>
           )}
+          {state.hardcore && <span className="focus-timer__hardcore-badge">🔒 Hardcore</span>}
           <div className="focus-timer__actions">
             <button
               type="button"

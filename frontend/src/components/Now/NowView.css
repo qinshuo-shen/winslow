@@ -1,0 +1,91 @@
+/* "Quiet Momentum" (2026-08-11 redesign UI direction): calm, low-decision-
+   fatigue, no reward-color zoo. Reuses the existing --accent/--border/--text
+   tokens (index.css) rather than a new palette -- the accent is reserved
+   for the one primary action (Start) here, same restraint the direction
+   calls for. */
+
+.now-view {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2rem 1.5rem;
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.now-view__eyebrow {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text);
+  opacity: 0.7;
+}
+
+.now-view__title {
+  margin: 0 0 0.5rem;
+  font-size: 1.6rem;
+}
+
+.now-view__meta {
+  margin: 0 0 1.5rem;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.now-view__actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.now-view__start {
+  font-size: 1.05rem;
+  padding: 0.65rem 2rem;
+  border-radius: 8px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 300ms ease;
+}
+
+.now-view__start:hover {
+  opacity: 0.9;
+}
+
+.now-view__start:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.now-view__swap {
+  font-size: 0.9rem;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.now-view__swap:hover {
+  border-color: var(--border);
+}
+
+.now-view__swap:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.now-view__swap-exhausted {
+  font-size: 0.85rem;
+  color: var(--text);
+  opacity: 0.6;
+}
+
+.now-view__error {
+  color: #b3261e;
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+}

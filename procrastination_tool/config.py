@@ -10,6 +10,16 @@ NOTION_TOKEN = os.environ.get("NOTION_TOKEN") or None
 NOTION_DATABASE_ID = os.environ.get("NOTION_DATABASE_ID") or None
 FOCUS_CALENDAR_NAME = os.environ.get("FOCUS_CALENDAR_NAME", "Focus Blocks")
 
+# "Hardcore" focus sessions (optional calendar block, confirmed with the
+# user): must be the EXACT name of the user's own already-Exchange-synced
+# calendar as it already appears in Calendar.app -- NOT a calendar this
+# tool creates (unlike FOCUS_CALENDAR_NAME). calendar_bridge.create_event's
+# ensure_calendar() call is a harmless no-op here since the calendar
+# already exists; if this is left unset/wrong, hardcore session starts will
+# fail loudly (AppleScript error) rather than silently writing to the wrong
+# place.
+EXCHANGE_CALENDAR_NAME = os.environ.get("EXCHANGE_CALENDAR_NAME") or None
+
 # Calendars (beyond FOCUS_CALENDAR_NAME, always included) that count as
 # "busy" time when computing free slots -- confirmed with the user
 # 2026-08-02, not guessed: their Outlook work calendar syncs into
@@ -119,6 +129,36 @@ QUESTLINE_MILESTONE_BONUS_RUNES = 200
 # weekday afternoon 13-18, weekend 15-21) with zero leftover.
 BLOCK_WORK_MINUTES = 45
 BLOCK_BREAK_MINUTES = 15
+
+# Proactive scheduler (2026-08-11 redesign): auto-picks a task during
+# working hours and nudges the user instead of waiting to be opened. Grace
+# window is how long the user has to tap Start/Swap before the nudged task
+# auto-starts on its own -- short enough to keep urgency, long enough to
+# actually notice the notification. Swaps are capped so "pick something
+# else" can't turn back into open-ended browsing/choice-paralysis.
+AUTO_START_GRACE_SECONDS = int(os.environ.get("AUTO_START_GRACE_SECONDS", "120"))
+MAX_NUDGE_CANDIDATES = int(os.environ.get("MAX_NUDGE_CANDIDATES", "3"))
+MAX_NUDGE_SWAPS = int(os.environ.get("MAX_NUDGE_SWAPS", "2"))
+
+# Deadlines/effort tracking (2026-08-11 redesign, Phase 3). A deadline
+# governs ENGAGEMENT, not completion -- see deadlines.py's module docstring.
+# Horizon-by-quadrant mirrors the effort-first bias PRIORITY_ORDER already
+# encodes: heavier tasks get more real time before their engagement window
+# closes, lighter ones are meant to be tackled same-day.
+DEADLINE_HORIZON_HOURS_BY_PRIORITY = {
+    "Major Projects (High Impact-High Effort)": 72,
+    "Thankless Tasks (Low Impact-High Effort)": 24,
+    "Quick Wins (High Impact-Low Effort)": 8,
+    "Fill-ins (Low Impact-Low Effort)": 8,
+}
+DEFAULT_GRACE_MINUTES = int(os.environ.get("DEFAULT_GRACE_MINUTES", "15"))
+WEEKLY_PASS_LIMIT = int(os.environ.get("WEEKLY_PASS_LIMIT", "1"))
+
+# Partial credit: a session stopped early still counts as genuine effort if
+# it reached this fraction of its planned length -- decided during the
+# redesign brainstorm over the stricter "must fully complete" alternative,
+# so a real interruption doesn't unfairly count as disengagement.
+EFFORT_CREDIT_RATIO = float(os.environ.get("EFFORT_CREDIT_RATIO", "0.75"))
 
 LOG_DIR = PROJECT_ROOT / "logs"
 LOG_DIR.mkdir(exist_ok=True)

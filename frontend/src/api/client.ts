@@ -87,3 +87,28 @@ export async function apiPost<T>(path: string, payload?: unknown): Promise<T> {
 
   return body as T;
 }
+
+/**
+ * PATCH `${BASE_PATH}${path}` with `payload` as a JSON body, and parse the
+ * JSON response as `T`. Same error handling as `apiPost` -- used for
+ * partial updates (e.g. the Board's PATCH /backlog/{id}).
+ */
+export async function apiPatch<T>(path: string, payload: unknown): Promise<T> {
+  const res = await fetch(`${BASE_PATH}${path}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const text = await res.text();
+  const body = text ? JSON.parse(text) : null;
+
+  if (!res.ok) {
+    const detail =
+      body && typeof body === "object" && "detail" in body
+        ? (body as { detail: unknown }).detail
+        : body;
+    throw new ApiError(res.status, detail);
+  }
+
+  return body as T;
+}

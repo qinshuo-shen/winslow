@@ -31,6 +31,27 @@ GET handler also calls tick() inline (see focus.py) for freshness between
 this loop's once-a-second ticks, but the two calls serve different
 purposes: the router's tick keeps a *polling* client's snapshot fresh,
 this loop guarantees the transition fires even with *no* client polling.
+
+2026-08-11 redesign, retired same day: the push-based "Now" nudge
+(proactive_scheduler.tick()) was tried in this loop and pulled back out --
+the user wants a browsable Notion-style board instead of a one-task-at-a-
+time push surface (see procrastination_tool/tasks.py's Board work). The
+engine itself has real side effects (desktop notifications, auto-starting
+sessions), so it's not enough to just stop calling it from the frontend --
+it has to stop ticking here too, or it'd keep firing with no UI to react
+to it. `proactive_scheduler.py`/`api/routers/now.py` are left on disk,
+unused, same as the other retired modules (Planner/Character/Armory).
+
+Same-day follow-up: the legacy Notion-backed `/api/tasks` router (routers/
+tasks.py) AND `/api/planner/*` (routers/planner.py -- its assign/move/
+refresh endpoints call notion_cache/sync just as directly) are no longer
+registered, now that procrastination_tool/migrate_notion_tasks.py has
+pulled every task out of Notion into the native `tasks` table (see
+routers/backlog.py, the Board's data source) -- the app no longer talks to
+Notion at all. `routers/tasks.py`, `routers/planner.py`, `notion_tasks.py`,
+`api/notion_cache.py`, and `sync.py` are left on disk, unused, same
+convention as the other retired modules (Planner's frontend was already
+unused before this).
 """
 import asyncio
 from contextlib import asynccontextmanager
@@ -41,7 +62,7 @@ from fastapi.staticfiles import StaticFiles
 
 from procrastination_tool.focus_session_manager import manager as focus_manager
 
-from .routers import calendar, character, focus, gear, planner, sessions, tasks
+from .routers import backlog, calendar, character, evaluation, focus, gear, now, sessions, tags
 
 # frontend/dist relative to this file (api/main.py -> api/ -> repo root -> frontend/dist)
 FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
@@ -67,13 +88,19 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Procrastination Tool API", lifespan=lifespan)
 
-app.include_router(tasks.router, prefix="/api")
 app.include_router(calendar.router, prefix="/api")
-app.include_router(planner.router, prefix="/api")
 app.include_router(sessions.router, prefix="/api")
 app.include_router(character.router, prefix="/api")
 app.include_router(gear.router, prefix="/api")
 app.include_router(focus.router, prefix="/api")
+# 2026-08-11 redesign: native task backlog (replaces Notion) -- see
+# procrastination_tool/tasks.py. `now` stays registered but inert (see the
+# module docstring above -- proactive_scheduler no longer ticks).
+app.include_router(backlog.router, prefix="/api")
+app.include_router(now.router, prefix="/api")
+app.include_router(tags.router, prefix="/api")
+# End-of-day evaluation + mood tracker (same-day follow-up).
+app.include_router(evaluation.router, prefix="/api")
 
 
 @app.get("/api/health")
