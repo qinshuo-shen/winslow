@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { apiPost, ApiError } from "../../api/client";
 import type { FocusStartRequest, FocusStateOut } from "../../api/types";
-import { useAppData } from "../../context/AppDataContext";
 import { useFocusPolling } from "./useFocusPolling";
 import "./FocusTimerWidget.css";
 
@@ -14,12 +13,16 @@ import "./FocusTimerWidget.css";
 // no sound/animation.
 //
 // 2026-08-07: on a running/paused -> idle-with-result transition (session
-// completed, failed, or stopped), refetch Character (Runes may have
-// changed) and call onSessionEnd (bumps App.tsx's statsRefreshKey so
-// FocusStats picks it up too). Detected via a status-transition effect over
-// the polled state, not just inside runAction -- auto-complete/auto-fail
-// happen on the backend's own tick loop and never go through runAction at
-// all, so watching the poll is the only way to catch every case.
+// completed, failed, or stopped), call onSessionEnd (bumps App.tsx's
+// statsRefreshKey so FocusStats picks it up too). Detected via a
+// status-transition effect over the polled state, not just inside
+// runAction -- auto-complete/auto-fail happen on the backend's own tick
+// loop and never go through runAction at all, so watching the poll is the
+// only way to catch every case.
+//
+// 2026-08-11, third same-day follow-up: no longer refetches Character/
+// Runes on session end -- the RPG reward system is removed (see
+// focus_timer.finalize_session()), so there's nothing left to refetch.
 
 interface FocusTimerWidgetProps {
   onSessionEnd?: () => void;
@@ -34,18 +37,17 @@ function formatMMSS(totalSeconds: number): string {
 
 function completionMessage(result: NonNullable<FocusStateOut["last_result"]>): string {
   if (result.outcome === "completed") {
-    return `Session complete! +${result.runes_awarded} Runes (${result.actual_minutes.toFixed(1)} min).`;
+    return `Session complete! ${result.actual_minutes.toFixed(1)} min.`;
   }
   if (result.outcome === "failed_pause_timeout") {
-    return `Session failed -- paused too long. ${result.actual_minutes.toFixed(1)} min logged, Runes left in a bloodstain.`;
+    return `Session failed -- paused too long. ${result.actual_minutes.toFixed(1)} min logged.`;
   }
-  return `Session stopped early. ${result.actual_minutes.toFixed(1)} min logged (no reward this time).`;
+  return `Session stopped early. ${result.actual_minutes.toFixed(1)} min logged.`;
 }
 
 export function FocusTimerWidget({ onSessionEnd }: FocusTimerWidgetProps) {
   const { state, error: pollError, refetch } = useFocusPolling(1000);
-  const { refetchCharacter } = useAppData();
-  const [duration, setDuration] = useState("25");
+  const [duration, setDuration] = useState("50");
   const [taskLabel, setTaskLabel] = useState("");
   const [hardcore, setHardcore] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -56,11 +58,10 @@ export function FocusTimerWidget({ onSessionEnd }: FocusTimerWidgetProps) {
     if (!state) return;
     const wasActive = prevStatusRef.current === "running" || prevStatusRef.current === "paused";
     if (wasActive && state.status === "idle" && state.last_result) {
-      refetchCharacter();
       onSessionEnd?.();
     }
     prevStatusRef.current = state.status;
-  }, [state, refetchCharacter, onSessionEnd]);
+  }, [state, onSessionEnd]);
 
   async function runAction(fn: () => Promise<unknown>) {
     setPending(true);
@@ -110,7 +111,7 @@ export function FocusTimerWidget({ onSessionEnd }: FocusTimerWidgetProps) {
             <span>Duration (min)</span>
             <input
               type="number"
-              min="0.05"
+              min="1"
               step="1"
               value={duration}
               onChange={(e) => setDuration(e.target.value)}

@@ -34,6 +34,18 @@ migrate_notion_tasks.py folds both into one tag list per task. `tags` and
 "create a new tag" and "what tags already exist" (for autocomplete) are
 trivial queries, and a typo'd tag doesn't silently fork into a near-
 duplicate the way ad hoc string splitting would encourage.
+
+2026-08-11, fourth same-day follow-up: tags gained a two-level hierarchy --
+`parent_id` (nullable, self-referencing) turns a tag into either a
+top-level "Project" (parent_id IS NULL -- e.g. "PhD core", "Education") or
+a sub-project nested under one (e.g. "Paper 2" under "PhD core"). Enforced
+to exactly two levels: set_tag_parent() rejects parenting a tag under
+another tag that itself has a parent, so chains can't go deeper -- the
+user asked for "a few project level (highest) tabs, then sub-project level
+tabs," not arbitrary nesting. See reclassify_tags.py for the real
+categorization applied to this project's actual tags (PhD core/PhD side/
+Education/ASPARi operation/Personal), confirmed with the user rather than
+guessed.
 """
 import sqlite3
 from contextlib import closing
@@ -87,6 +99,10 @@ def _ensure_columns(conn: sqlite3.Connection) -> None:
     for name, coltype in _NEW_COLUMNS.items():
         if name not in existing:
             conn.execute(f"ALTER TABLE tasks ADD COLUMN {name} {coltype}")
+
+    tag_columns = {row[1] for row in conn.execute("PRAGMA table_info(tags)")}
+    if "parent_id" not in tag_columns:
+        conn.execute("ALTER TABLE tags ADD COLUMN parent_id INTEGER REFERENCES tags(id)")
 
 
 def _connect() -> sqlite3.Connection:
@@ -164,21 +180,75 @@ def _set_task_tags_locked(conn: sqlite3.Connection, task_id: int, tag_names: Lis
     names = _normalize_tags(tag_names)
     conn.execute("DELETE FROM task_tags WHERE task_id = ?", (task_id,))
     for name in names:
-        conn.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (name,))
-        tag_id = conn.execute("SELECT id FROM tags WHERE name = ?", (name,)).fetchone()[0]
+        tag_id = _get_or_create_tag_id(conn, name)
         conn.execute(
             "INSERT OR IGNORE INTO task_tags (task_id, tag_id) VALUES (?, ?)", (task_id, tag_id)
         )
 
 
-def list_tags() -> List[str]:
-    """Every tag that's ever been created, alphabetically -- the
-    autocomplete source for the Board's tag editor. Persists independently
-    of current usage (same as a Notion select property's option list), so
-    a tag remains pickable even if the last task wearing it is deleted."""
+@dataclass
+class TagInfo:
+    name: str
+    parent: Optional[str]  # None for a top-level "Project" tag
+
+
+def list_tags() -> List[TagInfo]:
+    """Every tag that's ever been created, alphabetically, with its parent
+    (if any) -- the source for the Board's project tabs and the tag
+    editor's project/sub-tag picker. Persists independently of current
+    usage (same as a Notion select property's option list), so a tag
+    remains pickable even if the last task wearing it is deleted."""
     with closing(_connect()) as conn:
-        rows = conn.execute("SELECT name FROM tags ORDER BY name COLLATE NOCASE").fetchall()
-    return [r[0] for r in rows]
+        rows = conn.execute(
+            "SELECT t.name, p.name FROM tags t LEFT JOIN tags p ON p.id = t.parent_id "
+            "ORDER BY t.name COLLATE NOCASE"
+        ).fetchall()
+    return [TagInfo(name=r[0], parent=r[1]) for r in rows]
+
+
+def _get_or_create_tag_id(conn: sqlite3.Connection, name: str) -> int:
+    conn.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (name,))
+    return conn.execute("SELECT id FROM tags WHERE name = ?", (name,)).fetchone()[0]
+
+
+def set_tag_parent(name: str, parent: Optional[str]) -> TagInfo:
+    """Create `name` (if it doesn't already exist) and set its parent to
+    `parent` (creating that too if needed), or clear it back to top-level
+    if `parent` is None. Enforces exactly two levels: `parent` must itself
+    be a top-level tag (no parent of its own) -- raises ValueError for a
+    self-parent or a parent that already has a parent, rather than
+    silently allowing a deeper chain than the Board's two-tab-row UI can
+    represent."""
+    name = name.strip()
+    if not name:
+        raise ValueError("Tag name can't be empty")
+    if parent is not None:
+        parent = parent.strip()
+        if parent == name:
+            raise ValueError("A tag can't be its own parent")
+
+    with closing(_connect()) as conn:
+        tag_id = _get_or_create_tag_id(conn, name)
+
+        if parent is None:
+            conn.execute("UPDATE tags SET parent_id = NULL WHERE id = ?", (tag_id,))
+        else:
+            parent_id = _get_or_create_tag_id(conn, parent)
+            parent_of_parent = conn.execute(
+                "SELECT parent_id FROM tags WHERE id = ?", (parent_id,)
+            ).fetchone()[0]
+            if parent_of_parent is not None:
+                raise ValueError(
+                    f"{parent!r} is itself a sub-tag -- only a top-level tag can be a parent"
+                )
+            conn.execute("UPDATE tags SET parent_id = ? WHERE id = ?", (parent_id, tag_id))
+        conn.commit()
+
+        row = conn.execute(
+            "SELECT t.name, p.name FROM tags t LEFT JOIN tags p ON p.id = t.parent_id WHERE t.id = ?",
+            (tag_id,),
+        ).fetchone()
+    return TagInfo(name=row[0], parent=row[1])
 
 
 def add_task(

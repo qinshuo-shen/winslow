@@ -24,8 +24,8 @@ static mount only ever handles what's left.
 Phase 5 adds a `lifespan` background task that calls
 focus_session_manager.manager.tick() once a second for as long as the
 process is up. This is what guarantees a running session actually
-auto-completes (and a paused one auto-fails) on schedule with its Rune
-award/notification/DB-log side effects, even if no browser tab happens to
+auto-completes (and a paused one auto-fails) on schedule with its
+notification/DB-log side effects, even if no browser tab happens to
 be polling GET /api/focus/state at that exact moment -- the router's own
 GET handler also calls tick() inline (see focus.py) for freshness between
 this loop's once-a-second ticks, but the two calls serve different
@@ -67,6 +67,14 @@ before anything else touches it -- see that module's docstring for what it
 can and can't catch. `PROCRASTINATION_TOOL_FORCE_UNLOCK=1` overrides it for
 one startup, for the "the other machine crashed, I've confirmed it's not
 running" case.
+
+Third same-day follow-up: `character`/`gear` (the RPG Runes/stats/gear
+system) are no longer registered -- the user doesn't want gamification.
+Focus sessions no longer award Runes (see focus_timer.finalize_session()).
+`routers/character.py`, `routers/gear.py`, and the underlying
+`procrastination_tool/character.py`/`bloodstain.py`/`questlines.py`/
+`gear.py` are left on disk, unused, same convention as this project's
+other retired modules.
 """
 import asyncio
 import os
@@ -79,7 +87,7 @@ from fastapi.staticfiles import StaticFiles
 from procrastination_tool import device_lock
 from procrastination_tool.focus_session_manager import manager as focus_manager
 
-from .routers import backlog, calendar, character, evaluation, focus, gear, now, sessions, tags
+from .routers import backlog, calendar, evaluation, focus, now, sessions, tags
 
 # frontend/dist relative to this file (api/main.py -> api/ -> repo root -> frontend/dist)
 FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
@@ -113,8 +121,6 @@ app = FastAPI(title="Procrastination Tool API", lifespan=lifespan)
 
 app.include_router(calendar.router, prefix="/api")
 app.include_router(sessions.router, prefix="/api")
-app.include_router(character.router, prefix="/api")
-app.include_router(gear.router, prefix="/api")
 app.include_router(focus.router, prefix="/api")
 # 2026-08-11 redesign: native task backlog (replaces Notion) -- see
 # procrastination_tool/tasks.py. `now` stays registered but inert (see the

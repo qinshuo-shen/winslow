@@ -174,10 +174,6 @@ export function Evaluation() {
                 <span className="evaluation__metric-value">{evalResult.tasks_completed_count}</span>
               </div>
               <div className="evaluation__metric">
-                <span className="evaluation__metric-label">Runes earned</span>
-                <span className="evaluation__metric-value">{evalResult.runes_earned}</span>
-              </div>
-              <div className="evaluation__metric">
                 <span className="evaluation__metric-label">Mood avg</span>
                 <span className="evaluation__metric-value">
                   {evalResult.mood_avg === null ? "—" : evalResult.mood_avg.toFixed(1)}

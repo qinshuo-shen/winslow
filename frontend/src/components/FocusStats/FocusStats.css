@@ -45,3 +45,18 @@
 .focus-stats__error {
   color: #d1425f;
 }
+
+.focus-stats__toggle-history {
+  margin-top: 0.75rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.focus-stats__toggle-history:hover {
+  border-color: var(--accent-border);
+}

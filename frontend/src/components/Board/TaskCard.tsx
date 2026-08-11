@@ -1,4 +1,4 @@
-import { TASK_STATUSES } from "../../api/types";
+import { PRIORITY_QUADRANTS, TASK_STATUSES, quadrantLabel } from "../../api/types";
 import type { BacklogTaskOut, TaskStatus } from "../../api/types";
 import { quadrantClass } from "./quadrantStyle";
 
@@ -7,6 +7,7 @@ interface TaskCardProps {
   pending: boolean;
   onOpenNotes: () => void;
   onStatusChange: (status: TaskStatus) => void;
+  onPriorityChange: (priority: string) => void;
   onToggleToday: () => void;
   onDelete: () => void;
 }
@@ -16,6 +17,7 @@ export function TaskCard({
   pending,
   onOpenNotes,
   onStatusChange,
+  onPriorityChange,
   onToggleToday,
   onDelete,
 }: TaskCardProps) {
@@ -52,18 +54,34 @@ export function TaskCard({
       )}
 
       <div className="board-card__row board-card__row--controls">
-        <select
-          className="board-card__status"
-          value={task.status}
-          disabled={pending}
-          onChange={(e) => onStatusChange(e.target.value as TaskStatus)}
-        >
-          {TASK_STATUSES.map((s) => (
-            <option key={s.value} value={s.value}>
-              {s.label}
-            </option>
-          ))}
-        </select>
+        <div className={`board-card__priority-badge board-card__priority-badge--${quadrantClass(task.priority)}`}>
+          <select
+            className="board-card__priority"
+            value={task.priority}
+            disabled={pending}
+            onChange={(e) => onPriorityChange(e.target.value)}
+          >
+            {PRIORITY_QUADRANTS.map((q) => (
+              <option key={q} value={q}>
+                {quadrantLabel(q)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className={`board-card__status-badge board-card__status-badge--${task.status}`}>
+          <select
+            className="board-card__status"
+            value={task.status}
+            disabled={pending}
+            onChange={(e) => onStatusChange(e.target.value as TaskStatus)}
+          >
+            {TASK_STATUSES.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <button
           type="button"
           className="board-card__move"

@@ -247,6 +247,20 @@ export interface BacklogTaskUpdateRequest {
   tags?: string[];
 }
 
+// Fourth same-day follow-up: two-level tag hierarchy (Project / sub-project).
+// `parent` is null for a top-level "Project" tag (e.g. "PhD core"); a
+// non-null `parent` names the top-level tag this one is nested under.
+
+export interface TagOut {
+  name: string;
+  parent: string | null;
+}
+
+export interface TagCreateRequest {
+  name: string;
+  parent?: string | null;
+}
+
 // Same-day follow-up: end-of-day evaluation + mood tracker (3/3.1/3.2).
 
 export interface MoodEntryOut {

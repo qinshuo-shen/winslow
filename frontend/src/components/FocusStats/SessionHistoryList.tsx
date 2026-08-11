@@ -1,11 +1,14 @@
 import type { SessionOut } from "../../api/types";
 import "./SessionHistoryList.css";
 
-// Mirrors app.py's "Recent sessions" loop exactly:
+// Mirrors app.py's "Recent sessions" loop:
 //   status = ⏰ if outcome == failed_pause_timeout, else ✅ if completed, else ⏹️
-//   f"{status} {start:%Y-%m-%d %H:%M}  ({actual_minutes:.0f}min){label}{reward}"
-// where label = " — {task_label}" if task_label, reward = "  →  +{runes} Runes"
-// if runes_awarded is truthy (nonzero).
+//   f"{status} {start:%Y-%m-%d %H:%M}  ({actual_minutes:.0f}min){label}"
+// where label = " — {task_label}" if task_label.
+//
+// 2026-08-11, third same-day follow-up: no longer shows a Runes reward
+// suffix (even for historical sessions that did earn Runes under the old
+// system) -- the RPG reward system is removed from the live app.
 
 const OUTCOME_FAILED_PAUSE_TIMEOUT = "failed_pause_timeout";
 
@@ -25,8 +28,7 @@ function formatSessionLine(s: SessionOut): string {
     start.getDate(),
   )} ${pad2(start.getHours())}:${pad2(start.getMinutes())}`;
   const label = s.task_label ? ` — ${s.task_label}` : "";
-  const reward = s.runes_awarded ? `  →  +${s.runes_awarded} Runes` : "";
-  return `${dateLabel}  (${s.actual_minutes.toFixed(0)}min)${label}${reward}`;
+  return `${dateLabel}  (${s.actual_minutes.toFixed(0)}min)${label}`;
 }
 
 interface SessionHistoryListProps {

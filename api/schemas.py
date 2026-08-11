@@ -267,6 +267,22 @@ class BacklogTaskUpdateRequest(BaseModel):
     tags: Optional[List[str]] = None
 
 
+# Fourth same-day follow-up: two-level tag hierarchy (Project / sub-project).
+
+
+class TagOut(BaseModel):
+    name: str
+    parent: Optional[str] = None  # None means this tag IS a top-level Project
+
+
+class TagCreateRequest(BaseModel):
+    """Body for POST /api/tags -- create a tag (or, if it already exists,
+    set/replace its parent). `parent`, if given, must itself already be
+    (or become) a top-level tag -- see tasks.set_tag_parent."""
+
+    name: str
+    parent: Optional[str] = None
+
 
 # Same-day follow-up: end-of-day evaluation + mood tracker (3/3.1/3.2).
 

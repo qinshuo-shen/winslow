@@ -1,7 +1,7 @@
 [project]
-name = "procrastination-tool"
+name = "winslow"
 version = "0.1.0"
-description = "Personal Notion -> macOS Calendar sync, focus timer, and spin-wheel reward tool."
+description = "Winslow -- personal task board, focus timer, and calendar integration (formerly procrastination-tool)."
 requires-python = ">=3.9"
 dependencies = [
     "python-dotenv>=1.0",

@@ -1,10 +1,21 @@
-# procrastination-tool
+# Winslow
 
-Personal automation: Notion tasks → macOS Calendar sync, a Pomodoro-style focus
-timer, and a "spin wheel" reward mechanic. Built in phases — see
+_Formerly "procrastination-tool" -- renamed 2026-08-11 (fifth same-day follow-up;
+"win slow," a tortoise-and-hare pun to go with the app's turtle mascot). The
+Python package/import path (`procrastination_tool/`) and this repo's local
+directory name are unchanged -- see App.tsx's rename note for why._
+
+Personal task board (Notion-style, grouped by Impact/Effort quadrant, with a
+two-level Project/sub-project tag hierarchy), a Pomodoro-style focus timer with
+optional real-calendar-blocking "hardcore" sessions, and an end-of-day
+evaluation + mood tracker. Notion is no longer used at all (see the "Board
+Redesign" history below) -- calendar integration is the only external system
+still connected. Originally built in phases — see
 `~/.claude/plans/functional-shimmying-rain.md` (or the Obsidian wiki page
 `projects/procrastination-tool/synthesis/phased-plan-and-punishment-redesign.md`)
-for the full plan and reasoning.
+for the original plan and reasoning; most of what's described there (Notion
+sync, the spin wheel, the RPG reward system) has since been superseded --
+see the dated sections further down for the current shape.
 
 ## Status: All 4 phases resolved — daily sync, focus timer, and a dashboard are all live
 

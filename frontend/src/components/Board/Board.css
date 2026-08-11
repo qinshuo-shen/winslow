@@ -3,44 +3,54 @@
   text-align: left;
 }
 
-.board__add-form {
+.board__header {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
 }
 
-.board__add-form input[type="text"],
-.board__add-form select {
-  padding: 0.5rem 0.75rem;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text-h);
-}
-
-.board__add-form input[type="text"] {
-  flex: 1;
-  min-width: 140px;
-}
-
-.board__add-form-project {
-  flex: 0 0 auto;
-  width: 160px;
-}
-
-.board__add-form button {
+.board__new-task {
   padding: 0.5rem 1rem;
   border-radius: 8px;
   border: 1px solid var(--accent-border);
   background: var(--accent);
   color: #fff;
   cursor: pointer;
+  font: inherit;
+  white-space: nowrap;
 }
 
-.board__add-form button:disabled {
-  opacity: 0.5;
-  cursor: default;
+.board__new-task:hover {
+  opacity: 0.9;
+}
+
+.board__project-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.85rem;
+}
+
+.board__project-tab {
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.board__project-tab:hover {
+  border-color: var(--accent-border);
+}
+
+.board__project-tab--active {
+  background: var(--accent);
+  border-color: var(--accent-border);
+  color: #fff;
 }
 
 .board__error {
@@ -70,12 +80,26 @@
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  /* Caps a column's height so a long backlog scrolls inside the column
+     instead of growing the whole page -- the title stays outside this
+     scroll area (below) so it's always visible while scrolling. */
+  max-height: 70vh;
 }
 
 .board__column-title {
   margin: 0 0 0.6rem;
   font-size: 1rem;
   color: var(--text-h);
+  flex: 0 0 auto;
+}
+
+.board__column-scroll {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  padding-right: 0.25rem;
 }
 
 .board__column--today {
@@ -257,13 +281,130 @@
   opacity: 1;
 }
 
+.board-card__priority-badge,
+.board-card__status-badge {
+  display: inline-flex;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+
+.board-card__priority {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-weight: 500;
+}
+
+/* Same 4 hues as the quadrant column headers (board__quadrant-title--*)
+   -- this select literally edits which quadrant the task belongs to, so
+   reusing that palette (rather than inventing a 5th color system) keeps
+   the signal consistent between the column grouping and this control. */
+.board-card__priority-badge--major {
+  background: rgba(233, 30, 99, 0.14);
+  color: #c2185b;
+  border-color: rgba(233, 30, 99, 0.3);
+}
+.board-card__priority-badge--thankless {
+  background: rgba(46, 125, 50, 0.14);
+  color: #2e7d32;
+  border-color: rgba(46, 125, 50, 0.3);
+}
+.board-card__priority-badge--quick {
+  background: rgba(245, 124, 0, 0.16);
+  color: #b45309;
+  border-color: rgba(245, 124, 0, 0.32);
+}
+.board-card__priority-badge--fillins {
+  background: rgba(25, 118, 210, 0.14);
+  color: #1565c0;
+  border-color: rgba(25, 118, 210, 0.3);
+}
+
+@media (prefers-color-scheme: dark) {
+  .board-card__priority-badge--major {
+    background: rgba(244, 143, 177, 0.18);
+    color: #f48fb1;
+    border-color: rgba(244, 143, 177, 0.35);
+  }
+  .board-card__priority-badge--thankless {
+    background: rgba(129, 199, 132, 0.18);
+    color: #81c784;
+    border-color: rgba(129, 199, 132, 0.35);
+  }
+  .board-card__priority-badge--quick {
+    background: rgba(255, 183, 77, 0.2);
+    color: #ffb74d;
+    border-color: rgba(255, 183, 77, 0.38);
+  }
+  .board-card__priority-badge--fillins {
+    background: rgba(100, 181, 246, 0.2);
+    color: #64b5f6;
+    border-color: rgba(100, 181, 246, 0.38);
+  }
+}
+
 .board-card__status {
   font-size: 0.8rem;
   padding: 0.2rem 0.4rem;
   border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text-h);
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-weight: 500;
+}
+
+/* Status colors deliberately use a different hue set than the quadrant
+   chips (rose/green/amber/blue) -- status is a workflow stage, quadrant is
+   a domain, and a task card shows both at once, so keeping the two color
+   systems visually distinct avoids reading them as the same signal. */
+.board-card__status-badge--not_started {
+  background: rgba(120, 120, 128, 0.14);
+  color: #5a5a5f;
+  border-color: rgba(120, 120, 128, 0.3);
+}
+
+.board-card__status-badge--in_progress {
+  background: rgba(92, 107, 192, 0.16);
+  color: #5c6bc0;
+  border-color: rgba(92, 107, 192, 0.35);
+}
+
+.board-card__status-badge--on_hold {
+  background: rgba(230, 81, 0, 0.14);
+  color: #e65100;
+  border-color: rgba(230, 81, 0, 0.32);
+}
+
+.board-card__status-badge--completed {
+  background: rgba(0, 137, 123, 0.14);
+  color: #00897b;
+  border-color: rgba(0, 137, 123, 0.32);
+}
+
+@media (prefers-color-scheme: dark) {
+  .board-card__status-badge--not_started {
+    background: rgba(158, 158, 165, 0.18);
+    color: #c7c7cf;
+    border-color: rgba(158, 158, 165, 0.35);
+  }
+  .board-card__status-badge--in_progress {
+    background: rgba(159, 168, 218, 0.2);
+    color: #9fa8da;
+    border-color: rgba(159, 168, 218, 0.4);
+  }
+  .board-card__status-badge--on_hold {
+    background: rgba(255, 138, 101, 0.2);
+    color: #ff8a65;
+    border-color: rgba(255, 138, 101, 0.4);
+  }
+  .board-card__status-badge--completed {
+    background: rgba(77, 182, 172, 0.2);
+    color: #4db6ac;
+    border-color: rgba(77, 182, 172, 0.4);
+  }
 }
 
 .board-card__move {

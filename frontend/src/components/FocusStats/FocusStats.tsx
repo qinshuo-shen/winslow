@@ -27,6 +27,10 @@ export function FocusStats({ refreshKey }: FocusStatsProps) {
   const [stats, setStats] = useState<StatsOut | null>(null);
   const [sessions, setSessions] = useState<SessionOut[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Hidden by default -- collapsed behind a toggle rather than always
+  // taking up space, since it's detail you look up occasionally, not
+  // something worth showing on every visit.
+  const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,7 +107,15 @@ export function FocusStats({ refreshKey }: FocusStatsProps) {
 
       <DailyBarChart dailyMinutes={stats.daily_minutes} />
 
-      <SessionHistoryList sessions={sessions.slice(0, 10)} />
+      <button
+        type="button"
+        className="focus-stats__toggle-history"
+        onClick={() => setShowHistory((v) => !v)}
+      >
+        {showHistory ? "Hide recent sessions" : "Show recent sessions"}
+      </button>
+
+      {showHistory && <SessionHistoryList sessions={sessions.slice(0, 10)} />}
     </section>
   );
 }

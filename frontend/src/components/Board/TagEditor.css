@@ -32,13 +32,20 @@
   opacity: 1;
 }
 
-.tag-editor__form {
+.tag-editor__error {
+  color: #b3261e;
+  font-size: 0.8rem;
+  margin: 0 0 0.4rem;
+}
+
+.tag-editor__picker {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.4rem;
 }
 
-.tag-editor__form input {
-  flex: 1;
+.tag-editor__picker select,
+.tag-editor__picker input {
   padding: 0.35rem 0.6rem;
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -47,7 +54,15 @@
   font-size: 0.85rem;
 }
 
-.tag-editor__form button {
+.tag-editor__picker select {
+  flex: 0 1 160px;
+}
+
+.tag-editor__picker input {
+  flex: 1 1 160px;
+}
+
+.tag-editor__picker button {
   padding: 0.35rem 0.75rem;
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -57,7 +72,7 @@
   font-size: 0.85rem;
 }
 
-.tag-editor__form button:disabled {
+.tag-editor__picker button:disabled {
   opacity: 0.5;
   cursor: default;
 }

@@ -46,8 +46,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional, Tuple
 
-from . import bloodstain, character, notify
-from .config import BLOODSTAIN_EXPIRY_HOURS, FOCUS_SESSION_MINUTES, PAUSE_FAIL_MINUTES, SESSION_DB_PATH
+from . import notify
+from .config import FOCUS_SESSION_MINUTES, PAUSE_FAIL_MINUTES, SESSION_DB_PATH
 
 OUTCOME_COMPLETED = "completed"
 OUTCOME_STOPPED_EARLY = "stopped_early"
@@ -247,9 +247,8 @@ def run_focus_session(duration_minutes: float = FOCUS_SESSION_MINUTES,
     """
     `priority` and `specific_project` come from a real linked Notion task
     (see focus_cli.py's `focus start --pick`, notion_tasks.Task) when
-    available -- they drive the Rune award multiplier and questline
-    progress. A free-text `--task` label with no linked task leaves both
-    None, which still earns Runes at the DEFAULT_RUNE_MULTIPLIER rate.
+    available. A free-text `--task` label with no linked task leaves both
+    None.
     """
     start = datetime.now()
     label_suffix = f" on {task_label!r}" if task_label else ""
@@ -272,62 +271,44 @@ def finalize_session(start: datetime, end: datetime, duration_minutes: float,
                       worked_seconds: float, outcome: str, task_label: Optional[str],
                       priority: Optional[str], specific_project: Optional[str]) -> SessionResult:
     """
-    Shared tail end of a focus session -- reward/bloodstain/questline
-    progress, the completion notification, and the DB log row. Split out
-    of run_focus_session() (Phase 5, web migration) so the web session
-    manager (focus_session_manager.py) can drive the same reward/logging
-    logic from its own polling-based state machine, without depending on
-    run_focus_session()'s blocking terminal loop (_run_interactive/
-    _run_noninteractive) at all. The CLI still reaches this via
-    run_focus_session(); this function's own body is unchanged from what
-    used to live inline there.
+    Shared tail end of a focus session -- the completion notification and
+    the DB log row. Split out of run_focus_session() (Phase 5, web
+    migration) so the web session manager (focus_session_manager.py) can
+    drive the same logging logic from its own polling-based state machine,
+    without depending on run_focus_session()'s blocking terminal loop
+    (_run_interactive/_run_noninteractive) at all. The CLI still reaches
+    this via run_focus_session().
+
+    2026-08-11, third same-day follow-up: the RPG reward system (Runes,
+    bloodstains, questlines) is removed from this live path -- the user
+    doesn't want gamification. `runes_awarded` is always 0 now and kept
+    only as a column/field for backward-compatible reads of historical
+    sessions that DID earn Runes under the old system; character.py/
+    bloodstain.py/questlines.py are left on disk, unused, same convention
+    as this project's other retired modules (spin_wheel.py, scheduler.py).
+    `priority` is still threaded through (used for quadrant/effort
+    context elsewhere, e.g. the Board), just no longer drives a reward
+    multiplier.
     """
     actual_minutes = worked_seconds / 60
-    runes_awarded = 0
-    reward_note = None
 
     if outcome == OUTCOME_COMPLETED:
-        runes_awarded = character.calculate_rune_award(priority, actual_minutes)
-        new_balance = character.award_runes(runes_awarded)
-        reward_note = f"+{runes_awarded} Runes (balance: {new_balance})"
-
-        recovered = bloodstain.recover_active_bloodstain()
-        if recovered:
-            character.award_runes(recovered)
-            reward_note += f" -- recovered a bloodstain worth {recovered} Runes"
-
-        if specific_project:
-            questline_note = _record_questline_progress(specific_project)
-            if questline_note:
-                reward_note += f" -- {questline_note}"
-
-        print(f"\nSession complete! {reward_note}")
-        notify.send_notification("Focus session complete", reward_note, subtitle="Nice work!")
+        print(f"\nSession complete! {actual_minutes:.1f} min.")
+        notify.send_notification(
+            "Focus session complete", f"{actual_minutes:.1f} min", subtitle="Nice work!"
+        )
     elif outcome == OUTCOME_FAILED_PAUSE_TIMEOUT:
-        lost_runes = character.calculate_rune_award(priority, actual_minutes)
-        bloodstain.create_bloodstain(lost_runes, session_id=None)
-        print(f"Logged {actual_minutes:.1f} min worked -- paused too long, session failed. "
-              f"{lost_runes} Runes left in a bloodstain, recoverable by your next completed "
-              f"session (within {BLOODSTAIN_EXPIRY_HOURS}h).")
+        print(f"Logged {actual_minutes:.1f} min worked -- paused too long, session failed.")
         notify.send_notification(
             "Focus session failed",
-            f"Paused over {PAUSE_FAIL_MINUTES:g} min -- {lost_runes} Runes in a bloodstain",
+            f"Paused over {PAUSE_FAIL_MINUTES:g} min",
             subtitle=f"{actual_minutes:.1f} min logged",
         )
     else:
-        print(f"Logged {actual_minutes:.1f} min (incomplete, no reward this time).")
+        print(f"Logged {actual_minutes:.1f} min (incomplete).")
         notify.send_notification("Focus session ended early", f"{actual_minutes:.1f} min logged")
 
     log_session(start, end, duration_minutes, actual_minutes, outcome, task_label,
-                wheel_result=None, runes_awarded=runes_awarded, specific_project=specific_project)
+                wheel_result=None, runes_awarded=0, specific_project=specific_project)
     return SessionResult(completed=(outcome == OUTCOME_COMPLETED), actual_minutes=actual_minutes,
-                          wheel_result=None, outcome=outcome, runes_awarded=runes_awarded)
-
-
-def _record_questline_progress(specific_project: str) -> Optional[str]:
-    """Populated in Phase F (questlines.py) -- returns a human-readable
-    note if a questline milestone was hit, else None. Import is deferred so
-    focus_timer.py doesn't hard-depend on questlines.py's own DB writes
-    happening before this module is otherwise fully usable."""
-    from . import questlines
-    return questlines.record_questline_progress(specific_project)
+                          wheel_result=None, outcome=outcome, runes_awarded=0)

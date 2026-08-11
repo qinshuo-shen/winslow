@@ -3,15 +3,19 @@
 
     focus start [--duration 25] [--task "Draft review"] [--pick]
     focus history [--limit 10]
-    focus rest [--stat Intelligence]
+
+2026-08-11, third same-day follow-up: the `rest` subcommand (RPG character
+sheet / bonfire stat leveling) is removed -- the Runes reward system is no
+longer part of the live app (see focus_timer.py's finalize_session()).
+character.py/bloodstain.py are left on disk, unused, same convention as
+this project's other retired modules.
 """
 import argparse
 import os
 import sys
 
-from . import character, device_lock, focus_timer, notion_tasks
-from .bloodstain import get_active_bloodstain
-from .config import CHARACTER_STATS, FOCUS_SESSION_MINUTES, stat_level_cost
+from . import device_lock, focus_timer, notion_tasks
+from .config import FOCUS_SESSION_MINUTES
 
 
 def _pick_task(args: argparse.Namespace):
@@ -53,30 +57,6 @@ def _cmd_start(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_rest(args: argparse.Namespace) -> int:
-    if args.stat:
-        try:
-            new_level, runes_spent = character.spend_runes_on_stat(args.stat)
-        except ValueError as e:
-            print(f"Can't rest: {e}")
-            return 1
-        print(f"Rested at the bonfire -- {args.stat} is now level {new_level} "
-              f"({runes_spent} Runes spent).")
-
-    c = character.get_character()
-    print(f"\nCharacter sheet -- Level {c.level}, {c.runes} Runes")
-    for stat_name in CHARACTER_STATS:
-        level = c.stats.get(stat_name, 0)
-        cost = stat_level_cost(level)
-        print(f"  {stat_name:12s} lvl {level:3d}  (next level: {cost} Runes)")
-
-    stain = get_active_bloodstain()
-    if stain:
-        print(f"\n⚠ Active bloodstain: {stain.runes} Runes waiting to be recovered "
-              "by your next completed session.")
-    return 0
-
-
 def _status_label(s: focus_timer.SessionRow) -> str:
     if s.outcome == focus_timer.OUTCOME_FAILED_PAUSE_TIMEOUT:
         return "failed"
@@ -91,8 +71,7 @@ def _cmd_history(args: argparse.Namespace) -> int:
     for s in sessions:
         status = _status_label(s)
         label = f" [{s.task_label}]" if s.task_label else ""
-        reward = f" -> +{s.runes_awarded} Runes" if s.runes_awarded else ""
-        print(f"{s.start_time.strftime('%Y-%m-%d %H:%M')}  {s.actual_minutes:5.1f}min  {status:6s}{label}{reward}")
+        print(f"{s.start_time.strftime('%Y-%m-%d %H:%M')}  {s.actual_minutes:5.1f}min  {status:6s}{label}")
     return 0
 
 
@@ -112,12 +91,6 @@ def main() -> int:
     history_parser = subparsers.add_parser("history", help="Show recent focus sessions.")
     history_parser.add_argument("--limit", type=int, default=10, help="Number of recent sessions to show.")
     history_parser.set_defaults(func=_cmd_history)
-
-    rest_parser = subparsers.add_parser(
-        "rest", help="View your character sheet, and optionally spend Runes to level a stat (bonfire leveling).")
-    rest_parser.add_argument("--stat", type=str, default=None, choices=CHARACTER_STATS,
-                              help="Spend Runes to level this stat by one.")
-    rest_parser.set_defaults(func=_cmd_rest)
 
     args = parser.parse_args()
 

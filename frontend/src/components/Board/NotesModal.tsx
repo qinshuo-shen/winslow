@@ -1,9 +1,9 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { apiPatch, ApiError } from "../../api/client";
-import type { BacklogTaskOut, BacklogTaskUpdateRequest } from "../../api/types";
+import type { BacklogTaskOut, BacklogTaskUpdateRequest, TagOut } from "../../api/types";
 import { TagEditor } from "./TagEditor";
-import "./NotesModal.css";
+import "./TaskModal.css";
 
 // Per-task Markdown note-taking (2.2 in the redesign plan) -- click a
 // task's name on the Board to open this, edit raw Markdown in a textarea
@@ -13,16 +13,17 @@ import "./NotesModal.css";
 //
 // Tags (same-day follow-up) share this modal rather than getting their own
 // -- it's already the task's "detail view", same place Notion would put
-// them.
+// them. Shares TaskModal.css's overlay/panel styling with NewTaskModal.
 
 interface NotesModalProps {
   task: BacklogTaskOut;
-  availableTags: string[];
+  tagTree: TagOut[];
   onClose: () => void;
   onSaved: (updated: BacklogTaskOut) => void;
+  onTagCreated?: () => void;
 }
 
-export function NotesModal({ task, availableTags, onClose, onSaved }: NotesModalProps) {
+export function NotesModal({ task, tagTree, onClose, onSaved, onTagCreated }: NotesModalProps) {
   const [notes, setNotes] = useState(task.notes);
   const [tags, setTags] = useState<string[]>(task.tags);
   const [pending, setPending] = useState(false);
@@ -44,41 +45,47 @@ export function NotesModal({ task, availableTags, onClose, onSaved }: NotesModal
   }
 
   return (
-    <div className="notes-modal__overlay" onClick={onClose}>
-      <div className="notes-modal" onClick={(e) => e.stopPropagation()}>
-        <header className="notes-modal__header">
+    <div className="task-modal__overlay" onClick={onClose}>
+      <div className="task-modal" onClick={(e) => e.stopPropagation()}>
+        <header className="task-modal__header">
           <h3>{task.name}</h3>
-          <button type="button" className="notes-modal__close" onClick={onClose} aria-label="Close">
+          <button type="button" className="task-modal__close" onClick={onClose} aria-label="Close">
             ×
           </button>
         </header>
 
-        {error && <p className="notes-modal__error">{error}</p>}
+        {error && <p className="task-modal__error">{error}</p>}
 
-        <TagEditor tags={tags} availableTags={availableTags} onChange={setTags} disabled={pending} />
+        <TagEditor
+          tags={tags}
+          tagTree={tagTree}
+          onChange={setTags}
+          onTagCreated={onTagCreated}
+          disabled={pending}
+        />
 
-        <div className="notes-modal__panes">
+        <div className="task-modal__panes">
           <textarea
-            className="notes-modal__editor"
+            className="task-modal__editor"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Write notes in Markdown…"
             disabled={pending}
           />
-          <div className="notes-modal__preview">
+          <div className="task-modal__preview">
             {notes.trim() ? (
               <ReactMarkdown>{notes}</ReactMarkdown>
             ) : (
-              <p className="notes-modal__preview-empty">Preview appears here.</p>
+              <p className="task-modal__preview-empty">Preview appears here.</p>
             )}
           </div>
         </div>
 
-        <div className="notes-modal__actions">
+        <div className="task-modal__actions">
           <button type="button" onClick={onClose} disabled={pending}>
             Cancel
           </button>
-          <button type="button" className="notes-modal__save" onClick={handleSave} disabled={pending}>
+          <button type="button" className="task-modal__save" onClick={handleSave} disabled={pending}>
             Save
           </button>
         </div>
