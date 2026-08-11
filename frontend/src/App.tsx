@@ -45,7 +45,7 @@ function App() {
           <span className="dashboard__title-mascot" aria-hidden="true">
             🐢
           </span>
-          Winslow
+          <span className="dashboard__title-text">Winslow</span>
         </h1>
         <p className="dashboard__date">
           {new Date().toLocaleDateString(undefined, {

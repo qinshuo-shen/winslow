@@ -17,21 +17,43 @@
 /* A little whimsy on the title only -- the rest of the app stays
    deliberately calm/ungamified (see Board.tsx's own notes on that), but
    the page's own name is allowed a wink. Gradient text + a slight tilt on
-   the turtle, nothing else about the app's tone changes. */
+   the turtle, nothing else about the app's tone changes.
+
+   Two bugs fixed here (2026-08-11, sixth same-day follow-up):
+   1. The gradient/color:transparent was on the whole <h1>, which the
+      mascot <span> inherited -- with no background of its own to show
+      through, it just became invisible. Now scoped to a dedicated
+      .dashboard__title-text span so the mascot keeps a real color.
+   2. index.css's root `font: 18px/145% ...` shorthand sets a PERCENTAGE
+      line-height, which computes to a fixed pixel value at the root
+      (~26px) and is inherited as that literal pixel value, not
+      recalculated against the h1's own much larger 56px font-size.
+      Solid-color text doesn't visibly suffer from a too-short line box,
+      but `background-clip: text` uses the line box as its paint
+      boundary in Safari -- the gradient physically couldn't reach the
+      top of the tall glyphs, clipping them. Fixed with an explicit
+      unitless line-height on the h1 itself. */
 .dashboard__header h1 {
   text-align: left;
   margin: 0 0 1.1rem;
+  line-height: 1.25;
+  display: flex;
+  align-items: center;
+  gap: 0.2em;
+}
+
+.dashboard__header h1 .dashboard__title-text {
   background: linear-gradient(135deg, var(--accent), #ff8a65 70%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  -webkit-text-fill-color: transparent;
   letter-spacing: -1.5px;
 }
 
 .dashboard__header h1 .dashboard__title-mascot {
   display: inline-block;
   transform: rotate(-8deg);
-  margin-right: 0.15em;
 }
 
 .dashboard__date {
