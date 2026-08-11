@@ -52,14 +52,31 @@ Notion at all. `routers/tasks.py`, `routers/planner.py`, `notion_tasks.py`,
 `api/notion_cache.py`, and `sync.py` are left on disk, unused, same
 convention as the other retired modules (Planner's frontend was already
 unused before this).
+
+Second same-day follow-up: the user chose to run this app independently on
+two Macs (this one + a Mac mini) with `data/sessions.db` synced between
+them via Syncthing, rather than one machine acting as a shared server --
+see README.md's "Running independently on two Macs" section. That means
+two processes CAN end up writing to copies of the same file with no shared
+lock between them at the OS level, since they never actually run against
+the same file at the same instant, only synced-after-the-fact copies of
+it. `procrastination_tool.device_lock` guards the one common real mistake
+(forgetting to fully quit on one machine before starting on the other) by
+checking a hostname+timestamp marker stored inside the DB file itself
+before anything else touches it -- see that module's docstring for what it
+can and can't catch. `PROCRASTINATION_TOOL_FORCE_UNLOCK=1` overrides it for
+one startup, for the "the other machine crashed, I've confirmed it's not
+running" case.
 """
 import asyncio
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from procrastination_tool import device_lock
 from procrastination_tool.focus_session_manager import manager as focus_manager
 
 from .routers import backlog, calendar, character, evaluation, focus, gear, now, sessions, tags
@@ -70,6 +87,11 @@ FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Raises device_lock.DeviceLockError (aborting startup) if it looks
+    # unsafe to proceed -- deliberately BEFORE the tick loop starts, so a
+    # locked-out startup never gets the chance to touch the DB at all.
+    device_lock.acquire(force=os.environ.get("PROCRASTINATION_TOOL_FORCE_UNLOCK") == "1")
+
     async def _tick_loop():
         while True:
             await asyncio.to_thread(focus_manager.tick)
@@ -84,6 +106,7 @@ async def lifespan(app: FastAPI):
             await task
         except asyncio.CancelledError:
             pass
+        device_lock.release()
 
 
 app = FastAPI(title="Procrastination Tool API", lifespan=lifespan)

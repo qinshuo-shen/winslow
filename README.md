@@ -33,9 +33,46 @@ process to be granted through. If you ever want this project synced/backed up,
 sync `~/Developer/procrastination-tool` some other way (e.g. a git remote) rather
 than moving it back under iCloud Drive.
 
-## Running as a persistent server (e.g. on a Mac mini, for access from another Mac)
+## Running independently on two Macs, data synced via Syncthing (current setup)
 
-**2026-08-11.** The app is single-database (`data/sessions.db`, SQLite) and Calendar/notification automation is inherently tied to whichever Mac actually runs it — two independent copies syncing that file (iCloud/Syncthing) is a real corruption risk (see "Project location" above for why this project already avoids iCloud Drive for background processes), so the supported way to use this from more than one Mac is **one machine runs the server, everything else is just a browser client** — not two independent installs kept in sync.
+**2026-08-11, chosen over the shared-server option below.** Each Mac (this laptop + a Mac mini) runs its own full instance of the app — its own `uvicorn`/CLI, its own Calendar.app automation, its own desktop notifications, all correct for whichever machine you're actually sitting at — and `data/sessions.db` is kept in sync between them by [Syncthing](https://syncthing.net) (not iCloud Drive: this project's own history already has iCloud Drive silently reverting a different file to an older version with no warning at all, a worse failure mode for a database file specifically than for most documents).
+
+**The one hard rule this depends on: only run the app on one machine at a time.** Fully quit it on machine A (Ctrl-C the server/CLI, or `launchctl bootout` if it's installed as a LaunchAgent), let Syncthing finish syncing, *then* start it on machine B. Two live instances writing to their own not-yet-synced copies of the same SQLite file at once is a real corruption/data-loss risk that Syncthing's own conflict handling won't cleanly resolve for a binary database file the way it can for a text document.
+
+**Built-in safety net**: `procrastination_tool/device_lock.py` stores a `hostname` + `is_running` marker *inside* `data/sessions.db` itself (so it travels with the file, not as a separate thing that could itself race out of sync). Both the web server (`api/main.py`'s startup) and the `focus` CLI check it before touching anything else, and refuse to start with a clear error if it looks like the other machine's last session is still open:
+
+```
+Refusing to start: data/sessions.db was last opened by 'mac-mini.local' at
+2026-08-11T09:14:02 and was never marked closed cleanly. If 'mac-mini.local'
+is still running this app, stop it there first, wait for the sync to
+finish, then start here. If it crashed or was force-quit and you're SURE
+it isn't running, set PROCRASTINATION_TOOL_FORCE_UNLOCK=1 to override once.
+```
+
+This only catches "forgot to quit on the other machine first" — it can't detect whether Syncthing has actually *finished* syncing yet, so still pause a few seconds after quitting on one machine before starting on the other, especially over a slow/relay connection.
+
+Setup, on each Mac:
+
+```bash
+cd ~/Developer/procrastination-tool          # same non-iCloud-Drive location, see above; must
+                                              # match on both machines for launchd plists to work
+python3 -m venv .venv
+./.venv/bin/pip install -e ".[api]"
+cd frontend && npm install && npm run build && cd ..
+cp .env.example .env    # fill in real values -- same NOTION_TOKEN (only needed if you ever
+                         # re-run migrate_notion_tasks.py)/FOCUS_CALENDAR_NAME/EXCHANGE_CALENDAR_NAME
+                         # on both machines. Calendar.app needs the same iCloud/Exchange accounts
+                         # added on both Macs (System Settings -> Internet Accounts) so calendar
+                         # names resolve to the same real calendars either machine writes to.
+```
+
+Then install Syncthing on both Macs (`brew install syncthing` or the signed .app from syncthing.net) and add `~/Developer/procrastination-tool/data/` as a synced folder between them — **only that `data/` directory**, not the whole repo (code changes should go through git, not file sync, same as any other project). Use Syncthing's own folder-versioning option (keeps old versions on conflict instead of silently overwriting) rather than its default, given what's riding on this one file.
+
+Run with `.venv/bin/uvicorn api.main:app --host 127.0.0.1 --port 8000` (no need for `--host 0.0.0.0` here, unlike the shared-server option below — you're always accessing this machine's own instance locally) whenever you're actively using that machine, and make sure to stop it (Ctrl-C, or `launchctl bootout` if using a LaunchAgent) before switching to the other one.
+
+## Alternative: running as a persistent server (e.g. on a Mac mini, for access from another Mac)
+
+Kept here as a documented alternative, not the current setup — see above for why independent-and-synced was chosen instead. This approach avoids the single-active-writer discipline entirely (one shared database, no sync race possible) at the cost of Calendar-blocking/notifications only ever firing on the server machine, regardless of which device you're actually using.
 
 `api/main.py` already serves the built frontend itself (`frontend/dist/`, via `StaticFiles`) alongside the API from the same FastAPI process and same origin, so there's no CORS configuration needed — a browser on another device just points at the server machine's address and gets both the UI and the API from one port.
 

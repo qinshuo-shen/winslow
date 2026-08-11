@@ -6,9 +6,10 @@
     focus rest [--stat Intelligence]
 """
 import argparse
+import os
 import sys
 
-from . import character, focus_timer, notion_tasks
+from . import character, device_lock, focus_timer, notion_tasks
 from .bloodstain import get_active_bloodstain
 from .config import CHARACTER_STATS, FOCUS_SESSION_MINUTES, stat_level_cost
 
@@ -119,7 +120,21 @@ def main() -> int:
     rest_parser.set_defaults(func=_cmd_rest)
 
     args = parser.parse_args()
-    return args.func(args)
+
+    # Same cross-device write-safety guard the web server uses (see
+    # procrastination_tool/device_lock.py and api/main.py's lifespan) --
+    # this CLI touches data/sessions.db directly too, independent of
+    # whether the web server is also installed on this machine.
+    try:
+        device_lock.acquire(force=os.environ.get("PROCRASTINATION_TOOL_FORCE_UNLOCK") == "1")
+    except device_lock.DeviceLockError as e:
+        print(f"Refusing to start: {e}", file=sys.stderr)
+        return 1
+
+    try:
+        return args.func(args)
+    finally:
+        device_lock.release()
 
 
 if __name__ == "__main__":
