@@ -44,7 +44,43 @@ process to be granted through. If you ever want this project synced/backed up,
 sync `~/Developer/procrastination-tool` some other way (e.g. a git remote) rather
 than moving it back under iCloud Drive.
 
-## Running independently on two Macs, data synced via Syncthing (current setup)
+## Running as a single VPS-hosted server, accessed via Tailscale (current setup)
+
+**2026-08-12, superseding both sections below.** Once iPhone access was needed, the two-independent-Macs model stopped being viable — iOS can't run this app's backend at all (it needs a real Python/uvicorn process), so a phone can only ever be a *client*, not a peer instance. That reframes the earlier "which machine is more reliably always-on" question: rather than pressing the Mac mini into service as a server (subject to home power/internet/macOS sleep behavior), the app now runs on a small always-on VPS, with MacBook, Mac mini, and iPhone all connecting to it as thin clients over [Tailscale](https://tailscale.com).
+
+This inherits the single-shared-database simplicity of the "Alternative: persistent server" approach below (no sync race, no single-active-writer discipline needed), while being more reliable than hosting on a home Mac. Calendar.app/AppleScript integration (`procrastination_tool/calendar_bridge.py`) doesn't exist on Linux, so it degrades gracefully rather than working: `GET /api/calendar/today` returns a handled error the frontend already displays inline, and opt-in "hardcore" calendar-blocking simply never activates because `EXCHANGE_CALENDAR_NAME` is intentionally left unset on the VPS. Everything else (tasks, focus timer, board) is unaffected.
+
+**Provisioning** (one-time): a cheap VPS (e.g. Hetzner CX22, ~€4/mo, Ubuntu 24.04 LTS) is plenty for a single-user FastAPI+SQLite app. On the VPS:
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up --ssh --hostname=winslow-vps
+sudo useradd -r -m -d /opt/winslow winslow
+sudo apt install python3-venv git
+# /opt/winslow is the winslow user's home dir (has its own .bashrc/.profile from
+# useradd -m), so the repo goes in a subdirectory rather than cloned over it directly
+sudo -u winslow git clone https://github.com/qinshuo-shen/procrastination-tool.git /opt/winslow/app
+cd /opt/winslow/app
+python3 -m venv .venv && ./.venv/bin/pip install -e ".[api]"
+# frontend build needs a Node version this new-ish, apt's default is usually too old
+# (see skills/vite-rolldown-native-binding-node-engine-mismatch.md) -- nvm is the reliable path
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+export NVM_DIR="$HOME/.nvm" && source "$NVM_DIR/nvm.sh" && nvm install 22
+cd frontend && npm install && npm run build && cd ..
+cp .env.example .env     # leave EXCHANGE_CALENDAR_NAME (and NOTION_TOKEN -- Notion is fully
+                          # retired, see api/main.py's docstring) blank/unset
+sudo cp deploy/winslow.service /etc/systemd/system/winslow.service
+sudo systemctl daemon-reload && sudo systemctl enable --now winslow
+sudo tailscale serve --bg 8000
+```
+
+- **No auth code, no domain, no TLS cert management.** This app has zero authentication anywhere in it, so rather than bolt on Basic Auth + a public domain + a reverse proxy, access is Tailscale-only: uvicorn binds `127.0.0.1:8000` only, and `tailscale serve` proxies that to a private `https://winslow-vps.<tailnet>.ts.net` HTTPS endpoint reachable only by devices logged into the same tailnet. Install the Tailscale app on iPhone, MacBook, and Mac mini and log into the same tailnet; enable MagicDNS in the admin console so the hostname resolves everywhere.
+- **iPhone**: open the `https://winslow-vps.<tailnet>.ts.net` URL in Safari, then Share → "Add to Home Screen" for an app-like icon and full-screen launch (no browser chrome) — `frontend/index.html`'s manifest link and `apple-mobile-web-app-capable` meta tag make this work.
+- **Data**: copy the authoritative `data/sessions.db` (from whichever Mac had it) to `/opt/winslow/app/data/sessions.db` on the VPS once, over Tailscale (`scp`). If `device_lock.py` refuses to start because of a stale lock row inherited from the old Mac hostname, that's expected — do one transient `sudo systemctl set-environment PROCRASTINATION_TOOL_FORCE_UNLOCK=1 && sudo systemctl restart winslow`, confirm it's healthy, then `sudo systemctl unset-environment PROCRASTINATION_TOOL_FORCE_UNLOCK` (never leave it set standing).
+- **Backups**: `deploy/backup_db.sh` runs nightly via cron (`sudo crontab -u winslow -e`: `0 3 * * * /opt/winslow/app/deploy/backup_db.sh`) doing a safe SQLite `.backup` into `/opt/winslow/backups/`, pruned after 30 days. The Mac mini pulls a copy off the VPS nightly too (`rsync -az winslow@winslow-vps:/opt/winslow/backups/ ~/winslow-backups/`) so a copy exists off the VPS as well.
+- **Logs**: `journalctl -u winslow -f` (systemd's equivalent of the old launchd plist's `StandardOutPath`/`StandardErrorPath`).
+- The old per-Mac `data/` directories and the Syncthing folder pairing between the two Macs are retired but kept (not deleted) for a rollback window — see the sections below for what they looked like.
+
+## Running independently on two Macs, data synced via Syncthing (superseded 2026-08-12, kept for reference)
 
 **2026-08-11, chosen over the shared-server option below.** Each Mac (this laptop + a Mac mini) runs its own full instance of the app — its own `uvicorn`/CLI, its own Calendar.app automation, its own desktop notifications, all correct for whichever machine you're actually sitting at — and `data/sessions.db` is kept in sync between them by [Syncthing](https://syncthing.net) (not iCloud Drive: this project's own history already has iCloud Drive silently reverting a different file to an older version with no warning at all, a worse failure mode for a database file specifically than for most documents).
 
@@ -81,9 +117,9 @@ Then install Syncthing on both Macs (`brew install syncthing` or the signed .app
 
 Run with `.venv/bin/uvicorn api.main:app --host 127.0.0.1 --port 8000` (no need for `--host 0.0.0.0` here, unlike the shared-server option below — you're always accessing this machine's own instance locally) whenever you're actively using that machine, and make sure to stop it (Ctrl-C, or `launchctl bootout` if using a LaunchAgent) before switching to the other one.
 
-## Alternative: running as a persistent server (e.g. on a Mac mini, for access from another Mac)
+## Alternative: running as a persistent server on a Mac mini (superseded 2026-08-12, kept for reference)
 
-Kept here as a documented alternative, not the current setup — see above for why independent-and-synced was chosen instead. This approach avoids the single-active-writer discipline entirely (one shared database, no sync race possible) at the cost of Calendar-blocking/notifications only ever firing on the server machine, regardless of which device you're actually using.
+Kept here as a documented alternative, not the current setup — see the VPS section above for the current single-server approach, and the section immediately above this one for why independent-and-synced was chosen over this at the time. This approach avoids the single-active-writer discipline entirely (one shared database, no sync race possible) at the cost of Calendar-blocking/notifications only ever firing on the server machine, regardless of which device you're actually using.
 
 `api/main.py` already serves the built frontend itself (`frontend/dist/`, via `StaticFiles`) alongside the API from the same FastAPI process and same origin, so there's no CORS configuration needed — a browser on another device just points at the server machine's address and gets both the UI and the API from one port.
 

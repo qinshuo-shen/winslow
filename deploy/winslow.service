@@ -1,0 +1,29 @@
+[Unit]
+# Deployed on the VPS (2026-08-12): the single always-on backend that
+# MacBook, Mac mini, and iPhone all talk to as clients over Tailscale,
+# replacing the old per-Mac Syncthing-synced instances (see README).
+# `tailscale serve --bg 8000` proxies the tailnet HTTPS endpoint to this
+# service's localhost port -- uvicorn never binds a publicly reachable
+# interface itself.
+Description=Winslow (procrastination-tool) FastAPI server
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=winslow
+# The app lives in app/, not directly in the winslow user's home dir --
+# /opt/winslow itself holds the account's own dotfiles (.bashrc etc. from
+# the useradd -m skeleton), so `git clone` targets the app/ subdirectory.
+WorkingDirectory=/opt/winslow/app
+ExecStart=/opt/winslow/app/.venv/bin/uvicorn api.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+# Deliberately omit EXCHANGE_CALENDAR_NAME here (and in /opt/winslow/app/.env)
+# so hardcore-mode calendar blocking stays inert on this headless box --
+# AppleScript-based calendar_bridge.py isn't available on Linux, and the
+# app is designed to degrade gracefully rather than require it.
+EnvironmentFile=-/opt/winslow/app/.env
+
+[Install]
+WantedBy=multi-user.target
