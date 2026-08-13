@@ -11,6 +11,7 @@ Board can render completed/on-hold tasks too, and `PATCH /api/backlog/{id}`
 is the single generic endpoint the Board uses for every mutation (status
 change, quadrant move, Today/Pool toggle, reorder, notes edit).
 """
+from datetime import date
 from typing import List
 
 from fastapi import APIRouter, HTTPException
@@ -22,9 +23,20 @@ from ..schemas import BacklogTaskCreateRequest, BacklogTaskOut, BacklogTaskUpdat
 router = APIRouter(prefix="/backlog", tags=["backlog"])
 
 
+def _build_task_out(t: tasks.Task) -> BacklogTaskOut:
+    """BacklogTaskOut plus the computed `carried_forward` flag -- true only
+    when this task was the one roll_over_today() chose *today*, so a stale
+    carried_forward_date from a previous day never shows as still-carried."""
+    fields = {k: v for k, v in vars(t).items() if k != "carried_forward_date"}
+    return BacklogTaskOut(
+        **fields, carried_forward=(t.carried_forward_date == date.today().isoformat()),
+    )
+
+
 @router.get("", response_model=List[BacklogTaskOut])
 def list_backlog() -> List[BacklogTaskOut]:
-    return [BacklogTaskOut(**vars(t)) for t in tasks.list_all_tasks()]
+    tasks.roll_over_today()
+    return [_build_task_out(t) for t in tasks.list_all_tasks()]
 
 
 @router.post("", response_model=BacklogTaskOut)
@@ -36,7 +48,7 @@ def create_task(body: BacklogTaskCreateRequest) -> BacklogTaskOut:
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return BacklogTaskOut(**vars(task))
+    return _build_task_out(task)
 
 
 @router.patch("/{task_id}", response_model=BacklogTaskOut)
@@ -52,7 +64,7 @@ def patch_task(task_id: int, body: BacklogTaskUpdateRequest) -> BacklogTaskOut:
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return BacklogTaskOut(**vars(task))
+    return _build_task_out(task)
 
 
 @router.post("/{task_id}/complete", response_model=BacklogTaskOut)
@@ -62,7 +74,7 @@ def complete_task(task_id: int) -> BacklogTaskOut:
         raise HTTPException(status_code=404, detail="Task not found")
     tasks.mark_completed(task_id)
     task = tasks.get_task(task_id)
-    return BacklogTaskOut(**vars(task))
+    return _build_task_out(task)
 
 
 @router.delete("/{task_id}")

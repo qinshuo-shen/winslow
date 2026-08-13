@@ -223,6 +223,7 @@ export interface BacklogTaskOut {
   position: number;
   completed_at: string | null; // datetime
   tags: string[];
+  carried_forward: boolean;
 }
 
 export interface BacklogTaskCreateRequest {
@@ -287,6 +288,12 @@ export interface DailyEvaluationOut {
   mood_entries: MoodEntryOut[];
   tasks_completed_names: string[];
   quadrant_breakdown: Record<string, number>;
+}
+
+export interface EvaluationTodayStatusOut {
+  date: string; // date
+  mood_logged: boolean;
+  evaluation_generated: boolean;
 }
 
 export type NowStatus = "idle" | "pending_start";

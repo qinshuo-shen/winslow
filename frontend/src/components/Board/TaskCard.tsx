@@ -39,6 +39,12 @@ export function TaskCard({
         </button>
       </div>
 
+      {task.carried_forward && (
+        <span className="board-card__carried-forward" title="Still in progress -- carried forward from yesterday">
+          continuing from yesterday
+        </span>
+      )}
+
       {task.specific_project && (
         <span className="board-card__project">{task.specific_project}</span>
       )}

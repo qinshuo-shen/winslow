@@ -239,6 +239,7 @@ class BacklogTaskOut(BaseModel):
     position: int = 0
     completed_at: Optional[datetime] = None
     tags: List[str] = []
+    carried_forward: bool = False
 
 
 class BacklogTaskCreateRequest(BaseModel):
@@ -320,6 +321,17 @@ class EvaluationGenerateRequest(BaseModel):
     (server-side) when omitted."""
 
     date: Optional[date] = None
+
+
+class EvaluationTodayStatusOut(BaseModel):
+    """Body for GET /api/evaluation/today-status -- the end-of-day reminder
+    banner's only data source. Two separate booleans rather than one
+    collapsed "needs_reminder" so the frontend owns reminder policy (timing,
+    dismissal), not the backend."""
+
+    date: date
+    mood_logged: bool
+    evaluation_generated: bool
 
 
 class NowOut(BaseModel):

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiGet, apiPost, ApiError } from "../../api/client";
-import type { DailyEvaluationOut, MoodCreateRequest, MoodEntryOut } from "../../api/types";
+import type { DailyEvaluationOut, MoodEntryOut } from "../../api/types";
+import { MoodScaleButtons } from "./MoodScaleButtons";
 import { MoodTrendChart } from "./MoodTrendChart";
 import "./Evaluation.css";
 
@@ -10,17 +11,22 @@ import "./Evaluation.css";
 // not auto-generated on page load, since it's meant to be a deliberate
 // end-of-day reflection moment, not a live-updating dashboard tile.
 //
-// Deliberately no emoji/game framing on the mood scale (1-5 plain
-// numbers) -- same "calm, not gamified" tone the Board/former-Now surface
-// already established for this redesign.
+// Mood buttons themselves live in MoodScaleButtons.tsx, shared with the
+// EndOfDayReminder banner so both offer identical one-tap logging.
 
-const MOOD_SCALE = [1, 2, 3, 4, 5];
+interface EvaluationProps {
+  // Bumped by App.tsx whenever the EndOfDayReminder banner logs a mood
+  // entry, so this section's own mood list reflects it too -- MoodScaleButtons
+  // is a shared component, but each usage owns its own onLogged callback,
+  // so without this the two mood lists (banner-triggered fetch vs. this
+  // section's) would silently diverge. Same lifted-refreshKey pattern as
+  // FocusStats' refreshKey.
+  moodRefreshKey?: number;
+}
 
-export function Evaluation() {
+export function Evaluation({ moodRefreshKey }: EvaluationProps) {
   const [todayMood, setTodayMood] = useState<MoodEntryOut[] | null>(null);
-  const [moodPending, setMoodPending] = useState(false);
-  const [moodNote, setMoodNote] = useState("");
-  const [moodError, setMoodError] = useState<string | null>(null);
+  const [moodListError, setMoodListError] = useState<string | null>(null);
 
   const [evalResult, setEvalResult] = useState<DailyEvaluationOut | null>(null);
   const [evalPending, setEvalPending] = useState(false);
@@ -33,7 +39,7 @@ export function Evaluation() {
       const data = await apiGet<MoodEntryOut[]>("/mood");
       setTodayMood(data);
     } catch (e) {
-      setMoodError(e instanceof ApiError ? e.message : "Couldn't load today's mood log.");
+      setMoodListError(e instanceof ApiError ? e.message : "Couldn't load today's mood log.");
     }
   }
 
@@ -49,22 +55,7 @@ export function Evaluation() {
   useEffect(() => {
     refreshMood();
     refreshHistory();
-  }, []);
-
-  async function handleLogMood(score: number) {
-    setMoodPending(true);
-    setMoodError(null);
-    try {
-      const body: MoodCreateRequest = { mood_score: score, note: moodNote.trim() };
-      await apiPost("/mood", body);
-      setMoodNote("");
-      await refreshMood();
-    } catch (e) {
-      setMoodError(e instanceof ApiError ? e.message : "Couldn't log that.");
-    } finally {
-      setMoodPending(false);
-    }
-  }
+  }, [moodRefreshKey]);
 
   async function handleGenerate() {
     setEvalPending(true);
@@ -86,33 +77,13 @@ export function Evaluation() {
     .map((e) => ({ date: e.date, moodAvg: e.mood_avg }));
 
   return (
-    <section className="evaluation">
+    <section className="evaluation" id="evaluation">
       <h2>Day review</h2>
 
       <div className="evaluation__mood">
         <h3>How are you feeling?</h3>
-        <div className="evaluation__mood-scale">
-          {MOOD_SCALE.map((score) => (
-            <button
-              key={score}
-              type="button"
-              disabled={moodPending}
-              onClick={() => handleLogMood(score)}
-              className="evaluation__mood-button"
-            >
-              {score}
-            </button>
-          ))}
-        </div>
-        <input
-          type="text"
-          placeholder="Optional note…"
-          value={moodNote}
-          onChange={(e) => setMoodNote(e.target.value)}
-          disabled={moodPending}
-          className="evaluation__mood-note"
-        />
-        {moodError && <p className="evaluation__error">{moodError}</p>}
+        <MoodScaleButtons onLogged={refreshMood} />
+        {moodListError && <p className="evaluation__error">{moodListError}</p>}
 
         {todayMood !== null && todayMood.length > 0 && (
           <ul className="evaluation__mood-list">

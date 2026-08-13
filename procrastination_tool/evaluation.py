@@ -234,3 +234,11 @@ def list_evaluations(days: int = 7) -> List[DailyEvaluation]:
             "SELECT * FROM daily_evaluations ORDER BY date DESC LIMIT ?", (days,)
         ).fetchall()
     return [_row_to_evaluation(r) for r in rows]
+
+
+def has_logged_today(day: Optional[date_cls] = None) -> bool:
+    """True if `day` (default today) already has a mood entry or a
+    generated evaluation snapshot -- the sole signal the end-of-day
+    reminder banner uses to decide whether to show itself."""
+    day = day or date_cls.today()
+    return bool(list_mood_entries(day)) or get_evaluation(day) is not None

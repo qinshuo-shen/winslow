@@ -10,6 +10,12 @@ GET  /api/evaluation/{date}   -- fetch a previously generated snapshot
                                   (404 if nothing's been generated for it).
 GET  /api/evaluation/history  -- the last `days` generated snapshots, for
                                   a short trend view.
+GET  /api/evaluation/today-status -- has today been logged yet? The
+                                  end-of-day reminder banner's only data
+                                  source. Registered ABOVE
+                                  GET /evaluation/{eval_date} -- otherwise
+                                  FastAPI tries to parse "today-status" as
+                                  a date and 422s.
 POST /api/mood                -- log a mood entry.
 GET  /api/mood                -- that day's mood entries (today if no
                                   `date` query param).
@@ -24,6 +30,7 @@ from procrastination_tool import evaluation
 from ..schemas import (
     DailyEvaluationOut,
     EvaluationGenerateRequest,
+    EvaluationTodayStatusOut,
     MoodCreateRequest,
     MoodEntryOut,
 )
@@ -52,6 +59,16 @@ def generate_evaluation(body: EvaluationGenerateRequest) -> DailyEvaluationOut:
 @router.get("/evaluation/history", response_model=List[DailyEvaluationOut])
 def get_evaluation_history(days: int = Query(7, ge=1, le=90)) -> List[DailyEvaluationOut]:
     return [_build_evaluation_out(e) for e in evaluation.list_evaluations(days)]
+
+
+@router.get("/evaluation/today-status", response_model=EvaluationTodayStatusOut)
+def get_today_status() -> EvaluationTodayStatusOut:
+    today = date_cls.today()
+    return EvaluationTodayStatusOut(
+        date=today,
+        mood_logged=bool(evaluation.list_mood_entries(today)),
+        evaluation_generated=evaluation.get_evaluation(today) is not None,
+    )
 
 
 @router.get("/evaluation/{eval_date}", response_model=DailyEvaluationOut)

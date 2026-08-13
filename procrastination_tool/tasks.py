@@ -81,6 +81,10 @@ CREATE TABLE IF NOT EXISTS task_tags (
     tag_id INTEGER NOT NULL,
     PRIMARY KEY (task_id, tag_id)
 );
+CREATE TABLE IF NOT EXISTS today_rollover (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    last_run_date TEXT NOT NULL
+);
 """
 
 # Guarded ALTER TABLE additions -- same lazy-migration pattern used by
@@ -91,6 +95,11 @@ _NEW_COLUMNS = {
     "is_today": "INTEGER NOT NULL DEFAULT 0",
     "position": "INTEGER NOT NULL DEFAULT 0",
     "completed_at": "TEXT",
+    # Set only on the single task chosen by a given day's roll_over_today()
+    # run; compared against "today" at the API layer (BacklogTaskOut's
+    # carried_forward field) so yesterday's marker goes stale for free,
+    # with no extra write needed to clear it.
+    "carried_forward_date": "TEXT",
 }
 
 
@@ -127,6 +136,7 @@ class Task:
     position: int
     completed_at: Optional[datetime]
     tags: List[str] = field(default_factory=list)
+    carried_forward_date: Optional[str] = None
 
 
 def _row_to_task(row: sqlite3.Row, tags: Optional[List[str]] = None) -> Task:
@@ -139,6 +149,7 @@ def _row_to_task(row: sqlite3.Row, tags: Optional[List[str]] = None) -> Task:
         position=row["position"],
         completed_at=datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None,
         tags=tags or [],
+        carried_forward_date=row["carried_forward_date"],
     )
 
 
@@ -425,3 +436,80 @@ def delete_task(task_id: int) -> None:
         conn.execute("DELETE FROM task_tags WHERE task_id = ?", (task_id,))
         conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
         conn.commit()
+
+
+@dataclass
+class RolloverResult:
+    ran: bool
+    carried_task: Optional[Task]
+    unmarked_count: int
+
+
+def _pick_carry_forward_candidate(stale: List[Task]) -> Optional[Task]:
+    """Deterministic choice of which one stale (is_today=True, not
+    completed) task carries forward into the new day. Prefers an
+    in_progress task ("still in progress") over not_started/on_hold; among
+    ties, reuses the Board's own existing ordering (quadrant rank, manual
+    position, creation order -- see list_all_tasks()) rather than inventing
+    a new one."""
+    if not stale:
+        return None
+    in_progress = [t for t in stale if t.status == STATUS_IN_PROGRESS]
+    pool = in_progress or stale
+
+    def key(t: Task):
+        rank = PRIORITY_ORDER.index(t.priority) if t.priority in PRIORITY_ORDER else len(PRIORITY_ORDER)
+        return (rank, t.position, t.created_at)
+
+    return min(pool, key=key)
+
+
+def roll_over_today(today: Optional[str] = None) -> RolloverResult:
+    """Idempotent per calendar day (guarded by today_rollover.last_run_date):
+    carries exactly one stale is_today task forward (tagging it with
+    carried_forward_date=today), unmarks every other stale is_today task
+    back to the pool, and clears is_today on any completed task still
+    flagged (hygiene -- the Board never renders completed tasks anyway, but
+    this keeps is_today meaning "actually in Today" in the DB). Called
+    lazily from GET /api/backlog rather than a background tick loop --
+    day-rollover has no time-sensitive side effects the way focus-session
+    auto-complete does, so it doesn't need one."""
+    today = today or datetime.now().date().isoformat()
+    with closing(_connect()) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT last_run_date FROM today_rollover WHERE id = 1"
+        ).fetchone()
+        if row and row["last_run_date"] == today:
+            return RolloverResult(ran=False, carried_task=None, unmarked_count=0)
+
+        stale_rows = conn.execute(
+            "SELECT * FROM tasks WHERE is_today = 1 AND status != ?",
+            (STATUS_COMPLETED,),
+        ).fetchall()
+        tags_by_id = _tags_by_task_id(conn, [r["id"] for r in stale_rows])
+        stale = [_row_to_task(r, tags_by_id[r["id"]]) for r in stale_rows]
+        chosen = _pick_carry_forward_candidate(stale)
+
+        for t in stale:
+            if chosen and t.id == chosen.id:
+                conn.execute(
+                    "UPDATE tasks SET carried_forward_date = ? WHERE id = ?",
+                    (today, t.id),
+                )
+            else:
+                conn.execute("UPDATE tasks SET is_today = 0 WHERE id = ?", (t.id,))
+
+        conn.execute(
+            "UPDATE tasks SET is_today = 0 WHERE is_today = 1 AND status = ?",
+            (STATUS_COMPLETED,),
+        )
+        conn.execute(
+            "INSERT INTO today_rollover (id, last_run_date) VALUES (1, ?) "
+            "ON CONFLICT(id) DO UPDATE SET last_run_date = excluded.last_run_date",
+            (today,),
+        )
+        conn.commit()
+
+    unmarked = len(stale) - (1 if chosen else 0)
+    return RolloverResult(ran=True, carried_task=chosen, unmarked_count=unmarked)
