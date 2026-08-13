@@ -1,0 +1,53 @@
+/* Same calm/neutral bordered-card look as .eod-reminder -- a prompt, not a
+   warning. */
+.morning-checkin {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.morning-checkin__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.morning-checkin__text {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text-h);
+}
+
+.morning-checkin__dismiss {
+  background: none;
+  border: none;
+  color: var(--text);
+  opacity: 0.6;
+  cursor: pointer;
+  font-size: 1.05rem;
+  line-height: 1;
+  padding: 0 0.2rem;
+}
+
+.morning-checkin__dismiss:hover {
+  opacity: 1;
+}
+
+.morning-checkin__board-link {
+  display: block;
+  background: none;
+  border: none;
+  color: var(--accent-border, var(--text-h));
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0;
+  margin-top: 0.5rem;
+  text-align: left;
+}
+
+.morning-checkin__board-link:hover {
+  text-decoration: underline;
+}

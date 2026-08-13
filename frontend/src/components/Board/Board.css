@@ -264,6 +264,22 @@
   border: 1px solid var(--border);
 }
 
+/* Same muted badge look, deliberately distinct wording from
+   carried-forward -- this marks a deliberate weekly commitment, not a
+   rollover consequence. */
+.board-card__this-week {
+  display: inline-block;
+  margin-top: 0.2rem;
+  margin-left: 0.35rem;
+  font-size: 0.7rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--accent-bg, var(--code-bg));
+  color: var(--accent-border, var(--text));
+  opacity: 0.85;
+  border: 1px solid var(--accent-border, var(--border));
+}
+
 .board-card__tags {
   display: flex;
   flex-wrap: wrap;
@@ -434,5 +450,20 @@
 }
 
 .board-card__move:hover {
+  border-color: var(--accent-border);
+}
+
+.board-card__week-toggle {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.board-card__week-toggle:hover {
   border-color: var(--accent-border);
 }

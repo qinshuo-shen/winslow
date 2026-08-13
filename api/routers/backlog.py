@@ -17,26 +17,50 @@ from typing import List
 from fastapi import APIRouter, HTTPException
 
 from procrastination_tool import tasks
+from procrastination_tool.weekly import week_start_date
 
-from ..schemas import BacklogTaskCreateRequest, BacklogTaskOut, BacklogTaskUpdateRequest
+from ..schemas import (
+    BacklogTaskCreateRequest,
+    BacklogTaskOut,
+    BacklogTaskUpdateRequest,
+    BacklogTodayStatusOut,
+)
 
 router = APIRouter(prefix="/backlog", tags=["backlog"])
 
 
 def _build_task_out(t: tasks.Task) -> BacklogTaskOut:
-    """BacklogTaskOut plus the computed `carried_forward` flag -- true only
-    when this task was the one roll_over_today() chose *today*, so a stale
-    carried_forward_date from a previous day never shows as still-carried."""
-    fields = {k: v for k, v in vars(t).items() if k != "carried_forward_date"}
+    """BacklogTaskOut plus two computed flags: `carried_forward` (true only
+    when this task was the one roll_over_today() chose *today*) and
+    `is_current_week_commitment` (true only when week_committed_date is
+    *this* week's Monday) -- both computed here rather than stored, so a
+    stale marker from a previous day/week never shows as still-active."""
+    fields = {
+        k: v for k, v in vars(t).items()
+        if k not in ("carried_forward_date", "week_committed_date")
+    }
     return BacklogTaskOut(
-        **fields, carried_forward=(t.carried_forward_date == date.today().isoformat()),
+        **fields,
+        carried_forward=(t.carried_forward_date == date.today().isoformat()),
+        is_current_week_commitment=(
+            t.week_committed_date == week_start_date(date.today()).isoformat()
+        ),
     )
 
 
 @router.get("", response_model=List[BacklogTaskOut])
 def list_backlog() -> List[BacklogTaskOut]:
     tasks.roll_over_today()
+    tasks.roll_over_week()
     return [_build_task_out(t) for t in tasks.list_all_tasks()]
+
+
+@router.get("/today-status", response_model=BacklogTodayStatusOut)
+def get_today_status() -> BacklogTodayStatusOut:
+    tasks.roll_over_today()
+    today = date.today()
+    has_today_tasks = any(t.is_today for t in tasks.list_all_tasks())
+    return BacklogTodayStatusOut(date=today, has_today_tasks=has_today_tasks)
 
 
 @router.post("", response_model=BacklogTaskOut)
@@ -61,6 +85,7 @@ def patch_task(task_id: int, body: BacklogTaskUpdateRequest) -> BacklogTaskOut:
             name=body.name, priority=body.priority, notes=body.notes,
             status=body.status, specific_project=body.specific_project,
             is_today=body.is_today, position=body.position, tags=body.tags,
+            is_this_week=body.is_this_week,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

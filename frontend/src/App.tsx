@@ -4,6 +4,9 @@ import { FocusTimerWidget } from "./components/FocusTimer/FocusTimerWidget";
 import { FocusStats } from "./components/FocusStats/FocusStats";
 import { Evaluation } from "./components/Evaluation/Evaluation";
 import { EndOfDayReminder } from "./components/Reminder/EndOfDayReminder";
+import { MorningCheckInReminder } from "./components/Reminder/MorningCheckInReminder";
+import { Retro } from "./components/Retro/Retro";
+import { PMAgentPanel } from "./components/PMAgent/PMAgentPanel";
 import "./App.css";
 
 // 2026-08-11 redesign, same-day follow-up: replaces the old multi-panel
@@ -39,6 +42,7 @@ import "./App.css";
 function App() {
   const [statsRefreshKey, setStatsRefreshKey] = useState(0);
   const [moodRefreshKey, setMoodRefreshKey] = useState(0);
+  const [boardRefreshKey, setBoardRefreshKey] = useState(0);
 
   return (
     <div className="dashboard">
@@ -59,11 +63,14 @@ function App() {
         </p>
       </header>
 
+      <MorningCheckInReminder />
       <EndOfDayReminder onMoodLogged={() => setMoodRefreshKey((k) => k + 1)} />
-      <Board />
+      <Board refreshKey={boardRefreshKey} />
+      <PMAgentPanel onTaskApplied={() => setBoardRefreshKey((k) => k + 1)} />
       <FocusTimerWidget onSessionEnd={() => setStatsRefreshKey((k) => k + 1)} />
       <FocusStats refreshKey={statsRefreshKey} />
       <Evaluation moodRefreshKey={moodRefreshKey} />
+      <Retro />
     </div>
   );
 }

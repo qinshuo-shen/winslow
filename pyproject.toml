@@ -19,6 +19,12 @@ dashboard = ["streamlit>=1.30", "streamlit-sortables>=0.3.1"]
 # stays on disk, untouched, same fallback convention as spin_wheel.py.
 api = ["fastapi>=0.115", "uvicorn>=0.30", "pydantic>=2.0"]
 
+# Scrum-lite AI PM-agent (backlog review suggestions) -- optional, same
+# reasoning as the other groups: only procrastination_tool/pm_agent.py
+# needs this, everything else runs fine without it (PM_AGENT_MOCK=1 dev
+# iteration needs no API key or this dependency at all).
+ai = ["anthropic>=0.40"]
+
 [project.scripts]
 focus = "procrastination_tool.focus_cli:main"
 

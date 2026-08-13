@@ -23,6 +23,7 @@ from typing import Dict, List, Optional
 
 from . import tasks
 from .config import SESSION_DB_PATH
+from .weekly import week_bounds, week_start_date
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS mood_entries (
@@ -39,6 +40,18 @@ CREATE TABLE IF NOT EXISTS daily_evaluations (
     completion_rate REAL,
     tasks_completed_count INTEGER NOT NULL,
     runes_earned INTEGER NOT NULL,
+    mood_avg REAL,
+    summary_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS weekly_retros (
+    week_start TEXT PRIMARY KEY,
+    week_end TEXT NOT NULL,
+    generated_at TEXT NOT NULL,
+    sessions_count INTEGER NOT NULL,
+    focused_minutes REAL NOT NULL,
+    tasks_completed_count INTEGER NOT NULL,
+    committed_count INTEGER NOT NULL,
+    committed_completed_count INTEGER NOT NULL,
     mood_avg REAL,
     summary_json TEXT NOT NULL
 );
@@ -242,3 +255,149 @@ def has_logged_today(day: Optional[date_cls] = None) -> bool:
     reminder banner uses to decide whether to show itself."""
     day = day or date_cls.today()
     return bool(list_mood_entries(day)) or get_evaluation(day) is not None
+
+
+@dataclass
+class WeeklyRetro:
+    week_start: date_cls
+    week_end: date_cls
+    generated_at: datetime
+    sessions_count: int
+    focused_minutes: float
+    tasks_completed_count: int
+    committed_count: int
+    committed_completed_count: int
+    mood_avg: Optional[float]
+    tasks_completed_names: List[str] = field(default_factory=list)
+    quadrant_breakdown: Dict[str, int] = field(default_factory=dict)
+
+
+def generate_weekly_retro(week_start: Optional[date_cls] = None) -> WeeklyRetro:
+    """Compute and persist (UPSERT) the retro for the week containing
+    `week_start` (defaults to the current week). Sessions/focused_minutes/
+    mood are queried directly from `sessions`/`mood_entries`, windowed to
+    the week -- not summed from daily_evaluations rows -- so this doesn't
+    depend on every day having had a daily evaluation generated (see
+    generate_daily_evaluation's identical windowing idiom). Committed vs.
+    completed: tasks whose week_committed_date is this week's Monday,
+    split by whether completed_at also falls inside this week."""
+    week_start = week_start_date(week_start or date_cls.today())
+    _, week_end = week_bounds(week_start)
+    start = datetime.combine(week_start, datetime.min.time())
+    end = datetime.combine(week_end, datetime.min.time()) + timedelta(days=1)
+
+    with closing(_connect()) as conn:
+        conn.row_factory = sqlite3.Row
+        session_rows = conn.execute(
+            "SELECT * FROM sessions WHERE start_time >= ? AND start_time < ?",
+            (start.isoformat(), end.isoformat()),
+        ).fetchall()
+        mood_rows = conn.execute(
+            "SELECT mood_score FROM mood_entries WHERE ts >= ? AND ts < ?",
+            (start.isoformat(), end.isoformat()),
+        ).fetchall()
+
+    sessions_count = len(session_rows)
+    completed_rows = [r for r in session_rows if r["completed"]]
+    focused_minutes = sum(r["actual_minutes"] for r in completed_rows)
+
+    all_tasks = tasks.list_all_tasks()
+    completed_this_week = [
+        t for t in all_tasks
+        if t.completed_at is not None and start <= t.completed_at < end
+    ]
+    quadrant_breakdown: Dict[str, int] = {}
+    for t in completed_this_week:
+        label = _quadrant_label(t.priority)
+        quadrant_breakdown[label] = quadrant_breakdown.get(label, 0) + 1
+
+    committed = [t for t in all_tasks if t.week_committed_date == week_start.isoformat()]
+    committed_completed = [
+        t for t in committed
+        if t.completed_at is not None and start <= t.completed_at < end
+    ]
+
+    mood_avg = (
+        sum(r["mood_score"] for r in mood_rows) / len(mood_rows) if mood_rows else None
+    )
+
+    generated_at = datetime.now()
+    summary = {
+        "tasks_completed_names": [t.name for t in completed_this_week],
+        "quadrant_breakdown": quadrant_breakdown,
+    }
+
+    with closing(_connect()) as conn:
+        conn.execute(
+            """
+            INSERT INTO weekly_retros
+                (week_start, week_end, generated_at, sessions_count, focused_minutes,
+                 tasks_completed_count, committed_count, committed_completed_count,
+                 mood_avg, summary_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(week_start) DO UPDATE SET
+                week_end = excluded.week_end,
+                generated_at = excluded.generated_at,
+                sessions_count = excluded.sessions_count,
+                focused_minutes = excluded.focused_minutes,
+                tasks_completed_count = excluded.tasks_completed_count,
+                committed_count = excluded.committed_count,
+                committed_completed_count = excluded.committed_completed_count,
+                mood_avg = excluded.mood_avg,
+                summary_json = excluded.summary_json
+            """,
+            (
+                week_start.isoformat(), week_end.isoformat(), generated_at.isoformat(),
+                sessions_count, focused_minutes, len(completed_this_week),
+                len(committed), len(committed_completed), mood_avg, json.dumps(summary),
+            ),
+        )
+        conn.commit()
+
+    return WeeklyRetro(
+        week_start=week_start, week_end=week_end, generated_at=generated_at,
+        sessions_count=sessions_count, focused_minutes=focused_minutes,
+        tasks_completed_count=len(completed_this_week), committed_count=len(committed),
+        committed_completed_count=len(committed_completed), mood_avg=mood_avg,
+        tasks_completed_names=[t.name for t in completed_this_week],
+        quadrant_breakdown=quadrant_breakdown,
+    )
+
+
+def _row_to_weekly_retro(row: sqlite3.Row) -> WeeklyRetro:
+    summary = json.loads(row["summary_json"])
+    return WeeklyRetro(
+        week_start=date_cls.fromisoformat(row["week_start"]),
+        week_end=date_cls.fromisoformat(row["week_end"]),
+        generated_at=datetime.fromisoformat(row["generated_at"]),
+        sessions_count=row["sessions_count"], focused_minutes=row["focused_minutes"],
+        tasks_completed_count=row["tasks_completed_count"],
+        committed_count=row["committed_count"],
+        committed_completed_count=row["committed_completed_count"],
+        mood_avg=row["mood_avg"],
+        tasks_completed_names=summary.get("tasks_completed_names", []),
+        quadrant_breakdown=summary.get("quadrant_breakdown", {}),
+    )
+
+
+def get_weekly_retro(week_start: date_cls) -> Optional[WeeklyRetro]:
+    """The persisted retro for the week starting `week_start` (must be a
+    Monday), if one has been generated."""
+    with closing(_connect()) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM weekly_retros WHERE week_start = ?", (week_start.isoformat(),)
+        ).fetchone()
+    return _row_to_weekly_retro(row) if row else None
+
+
+def list_weekly_retros(weeks: int = 6) -> List[WeeklyRetro]:
+    """The most recent `weeks` persisted retros, most recent first -- used
+    for the velocity trend. Only returns weeks that actually have a
+    generated retro (no gap-filling), same convention as list_evaluations."""
+    with closing(_connect()) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM weekly_retros ORDER BY week_start DESC LIMIT ?", (weeks,)
+        ).fetchall()
+    return [_row_to_weekly_retro(r) for r in rows]

@@ -224,6 +224,13 @@ export interface BacklogTaskOut {
   completed_at: string | null; // datetime
   tags: string[];
   carried_forward: boolean;
+  is_this_week: boolean;
+  is_current_week_commitment: boolean;
+}
+
+export interface BacklogTodayStatusOut {
+  date: string; // date
+  has_today_tasks: boolean;
 }
 
 export interface BacklogTaskCreateRequest {
@@ -246,6 +253,7 @@ export interface BacklogTaskUpdateRequest {
   is_today?: boolean;
   position?: number;
   tags?: string[];
+  is_this_week?: boolean;
 }
 
 // Fourth same-day follow-up: two-level tag hierarchy (Project / sub-project).
@@ -294,6 +302,41 @@ export interface EvaluationTodayStatusOut {
   date: string; // date
   mood_logged: boolean;
   evaluation_generated: boolean;
+}
+
+export interface WeeklyRetroOut {
+  week_start: string; // date
+  week_end: string; // date
+  generated_at: string; // datetime
+  sessions_count: number;
+  focused_minutes: number;
+  tasks_completed_count: number;
+  committed_count: number;
+  committed_completed_count: number;
+  mood_avg: number | null;
+  tasks_completed_names: string[];
+  quadrant_breakdown: Record<string, number>;
+}
+
+export interface PMSuggestedActionOut {
+  priority: string | null;
+  is_today: boolean | null;
+  is_this_week: boolean | null;
+}
+
+export interface PMSuggestionOut {
+  id: string;
+  kind: string;
+  task_id: number | null;
+  title: string;
+  rationale: string;
+  suggested_action: PMSuggestedActionOut | null;
+}
+
+export interface PMReviewOut {
+  generated_at: string; // datetime
+  model_used: string;
+  suggestions: PMSuggestionOut[];
 }
 
 export type NowStatus = "idle" | "pending_start";

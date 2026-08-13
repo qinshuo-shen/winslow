@@ -87,7 +87,7 @@ from fastapi.staticfiles import StaticFiles
 from procrastination_tool import device_lock
 from procrastination_tool.focus_session_manager import manager as focus_manager
 
-from .routers import backlog, calendar, evaluation, focus, now, sessions, tags
+from .routers import backlog, calendar, evaluation, focus, now, pm_agent, retro, sessions, tags
 
 # frontend/dist relative to this file (api/main.py -> api/ -> repo root -> frontend/dist)
 FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
@@ -130,6 +130,10 @@ app.include_router(now.router, prefix="/api")
 app.include_router(tags.router, prefix="/api")
 # End-of-day evaluation + mood tracker (same-day follow-up).
 app.include_router(evaluation.router, prefix="/api")
+# Scrum-lite: weekly retro (sprint/velocity feature set).
+app.include_router(retro.router, prefix="/api")
+# Scrum-lite: AI PM-agent (suggest-only backlog review).
+app.include_router(pm_agent.router, prefix="/api")
 
 
 @app.get("/api/health")

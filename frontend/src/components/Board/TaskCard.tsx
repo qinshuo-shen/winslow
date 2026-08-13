@@ -9,6 +9,7 @@ interface TaskCardProps {
   onStatusChange: (status: TaskStatus) => void;
   onPriorityChange: (priority: string) => void;
   onToggleToday: () => void;
+  onToggleThisWeek: () => void;
   onDelete: () => void;
 }
 
@@ -19,6 +20,7 @@ export function TaskCard({
   onStatusChange,
   onPriorityChange,
   onToggleToday,
+  onToggleThisWeek,
   onDelete,
 }: TaskCardProps) {
   return (
@@ -42,6 +44,12 @@ export function TaskCard({
       {task.carried_forward && (
         <span className="board-card__carried-forward" title="Still in progress -- carried forward from yesterday">
           continuing from yesterday
+        </span>
+      )}
+
+      {task.is_current_week_commitment && (
+        <span className="board-card__this-week" title="Committed to this week's sprint">
+          this week
         </span>
       )}
 
@@ -95,6 +103,14 @@ export function TaskCard({
           onClick={onToggleToday}
         >
           {task.is_today ? "→ Pool" : "→ Today"}
+        </button>
+        <button
+          type="button"
+          className="board-card__week-toggle"
+          disabled={pending}
+          onClick={onToggleThisWeek}
+        >
+          {task.is_this_week ? "− This Week" : "+ This Week"}
         </button>
       </div>
     </li>

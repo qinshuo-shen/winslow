@@ -1,0 +1,119 @@
+.pm-agent {
+  text-align: left;
+  margin-bottom: 2rem;
+}
+
+.pm-agent__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.pm-agent__header h2 {
+  text-align: left;
+  margin: 0;
+}
+
+.pm-agent__review {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  white-space: nowrap;
+}
+
+.pm-agent__review:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pm-agent__error {
+  color: #b3261e;
+  font-size: 0.9rem;
+  margin: 0.3rem 0;
+}
+
+.pm-agent__meta {
+  margin: 0.4rem 0 0.75rem;
+  font-size: 0.8rem;
+  color: var(--text);
+  opacity: 0.7;
+}
+
+.pm-agent__suggestions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+/* Same bordered-card look as the reminder banners -- calm, not
+   attention-grabbing; these are suggestions, not alerts. */
+.pm-agent__card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+}
+
+.pm-agent__card-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.pm-agent__card-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.pm-agent__dismiss {
+  background: none;
+  border: none;
+  color: var(--text);
+  opacity: 0.6;
+  cursor: pointer;
+  font-size: 1.05rem;
+  line-height: 1;
+  padding: 0 0.2rem;
+  flex-shrink: 0;
+}
+
+.pm-agent__dismiss:hover {
+  opacity: 1;
+}
+
+.pm-agent__card-rationale {
+  margin: 0.3rem 0 0;
+  font-size: 0.85rem;
+  color: var(--text);
+  opacity: 0.85;
+}
+
+.pm-agent__apply {
+  margin-top: 0.5rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.pm-agent__apply:hover:not(:disabled) {
+  border-color: var(--accent-border);
+}
+
+.pm-agent__apply:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

@@ -34,6 +34,10 @@ import "./Board.css";
 
 interface BoardProps {
   onTasksChanged?: () => void;
+  // Bumped by App.tsx whenever PMAgentPanel applies a suggestion (a PATCH
+  // this component's own state doesn't know about) -- same lifted-
+  // refreshKey pattern as Evaluation's moodRefreshKey.
+  refreshKey?: number;
 }
 
 interface GroupedColumn {
@@ -51,10 +55,11 @@ function groupByQuadrant(tasks: BacklogTaskOut[]): Record<string, GroupedColumn>
   return groups;
 }
 
-export function Board({ onTasksChanged }: BoardProps) {
+export function Board({ onTasksChanged, refreshKey }: BoardProps) {
   const [tasks, setTasks] = useState<BacklogTaskOut[] | null>(null);
   const [tagTree, setTagTree] = useState<TagOut[]>([]);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  const [sprintOnly, setSprintOnly] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [notesTask, setNotesTask] = useState<BacklogTaskOut | null>(null);
@@ -80,7 +85,7 @@ export function Board({ onTasksChanged }: BoardProps) {
   useEffect(() => {
     refresh();
     refreshTags();
-  }, []);
+  }, [refreshKey]);
 
   const topLevelProjects = useMemo(
     () => tagTree.filter((t) => t.parent === null).map((t) => t.name).sort(),
@@ -104,10 +109,15 @@ export function Board({ onTasksChanged }: BoardProps) {
   // Nothing is deleted, just excluded from this view; the evaluation
   // report's "tasks completed today" still counts them via completed_at.
   const visibleTasks = useMemo(() => {
-    const notDone = (tasks ?? []).filter((t) => t.status !== "completed");
-    if (!projectSubtree) return notDone;
-    return notDone.filter((t) => t.tags.some((tag) => projectSubtree.has(tag)));
-  }, [tasks, projectSubtree]);
+    let notDone = (tasks ?? []).filter((t) => t.status !== "completed");
+    if (projectSubtree) {
+      notDone = notDone.filter((t) => t.tags.some((tag) => projectSubtree.has(tag)));
+    }
+    if (sprintOnly) {
+      notDone = notDone.filter((t) => t.is_current_week_commitment);
+    }
+    return notDone;
+  }, [tasks, projectSubtree, sprintOnly]);
   const grouped = useMemo(() => groupByQuadrant(visibleTasks), [visibleTasks]);
 
   async function patchTask(id: number, body: BacklogTaskUpdateRequest) {
@@ -165,6 +175,7 @@ export function Board({ onTasksChanged }: BoardProps) {
                       onStatusChange={(status: TaskStatus) => patchTask(t.id, { status })}
                       onPriorityChange={(priority: string) => patchTask(t.id, { priority })}
                       onToggleToday={() => patchTask(t.id, { is_today: !t.is_today })}
+                      onToggleThisWeek={() => patchTask(t.id, { is_this_week: !t.is_this_week })}
                       onDelete={() => handleDelete(t.id)}
                     />
                   ))}
@@ -179,7 +190,7 @@ export function Board({ onTasksChanged }: BoardProps) {
   }
 
   return (
-    <section className="board">
+    <section className="board" id="board">
       <div className="board__header">
         <h2>Tasks</h2>
         <button type="button" className="board__new-task" onClick={() => setShowNewTask(true)}>
@@ -187,27 +198,36 @@ export function Board({ onTasksChanged }: BoardProps) {
         </button>
       </div>
 
-      {topLevelProjects.length > 0 && (
-        <div className="board__project-tabs">
-          <button
-            type="button"
-            className={`board__project-tab ${selectedProject === null ? "board__project-tab--active" : ""}`}
-            onClick={() => setSelectedProject(null)}
-          >
-            All
-          </button>
-          {topLevelProjects.map((p) => (
+      <div className="board__project-tabs">
+        {topLevelProjects.length > 0 && (
+          <>
             <button
-              key={p}
               type="button"
-              className={`board__project-tab ${selectedProject === p ? "board__project-tab--active" : ""}`}
-              onClick={() => setSelectedProject(p)}
+              className={`board__project-tab ${selectedProject === null ? "board__project-tab--active" : ""}`}
+              onClick={() => setSelectedProject(null)}
             >
-              {p}
+              All
             </button>
-          ))}
-        </div>
-      )}
+            {topLevelProjects.map((p) => (
+              <button
+                key={p}
+                type="button"
+                className={`board__project-tab ${selectedProject === p ? "board__project-tab--active" : ""}`}
+                onClick={() => setSelectedProject(p)}
+              >
+                {p}
+              </button>
+            ))}
+          </>
+        )}
+        <button
+          type="button"
+          className={`board__project-tab board__project-tab--sprint ${sprintOnly ? "board__project-tab--active" : ""}`}
+          onClick={() => setSprintOnly((v) => !v)}
+        >
+          This Week
+        </button>
+      </div>
 
       {error && <p className="board__error">{error}</p>}
 

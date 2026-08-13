@@ -1,0 +1,116 @@
+.retro {
+  text-align: left;
+  margin-bottom: 2rem;
+}
+
+.retro h2 {
+  text-align: left;
+}
+
+.retro__report {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+}
+
+.retro__generate {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+}
+
+.retro__generate:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.retro__error {
+  color: #b3261e;
+  font-size: 0.9rem;
+  margin: 0.3rem 0;
+}
+
+.retro__result {
+  margin-top: 0.85rem;
+}
+
+.retro__metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.6rem;
+}
+
+.retro__metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.retro__metric-label {
+  font-size: 0.75rem;
+  color: var(--text);
+  opacity: 0.7;
+}
+
+.retro__metric-value {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+/* Deliberately terse: week-granularity, capped bars, no per-day
+   breakdown -- see Retro.tsx's comment on why day-over-day density is
+   avoided here. */
+.retro__velocity {
+  margin-top: 1rem;
+}
+
+.retro__trend-label {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text);
+  opacity: 0.7;
+}
+
+.retro__velocity-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.retro__velocity-row {
+  display: grid;
+  grid-template-columns: 3.2rem 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.retro__velocity-week {
+  color: var(--text);
+  opacity: 0.75;
+}
+
+.retro__velocity-track {
+  height: 0.6rem;
+  border-radius: 999px;
+  background: var(--code-bg);
+  overflow: hidden;
+}
+
+.retro__velocity-bar {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  opacity: 0.75;
+}
+
+.retro__velocity-value {
+  color: var(--text);
+  opacity: 0.8;
+  white-space: nowrap;
+}

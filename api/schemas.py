@@ -240,6 +240,16 @@ class BacklogTaskOut(BaseModel):
     completed_at: Optional[datetime] = None
     tags: List[str] = []
     carried_forward: bool = False
+    is_this_week: bool = False
+    is_current_week_commitment: bool = False
+
+
+class BacklogTodayStatusOut(BaseModel):
+    """Body for GET /api/backlog/today-status -- the morning check-in
+    banner's only data source (counterpart to evaluation's today-status)."""
+
+    date: date
+    has_today_tasks: bool
 
 
 class BacklogTaskCreateRequest(BaseModel):
@@ -266,6 +276,7 @@ class BacklogTaskUpdateRequest(BaseModel):
     is_today: Optional[bool] = None
     position: Optional[int] = None
     tags: Optional[List[str]] = None
+    is_this_week: Optional[bool] = None
 
 
 # Fourth same-day follow-up: two-level tag hierarchy (Project / sub-project).
@@ -332,6 +343,53 @@ class EvaluationTodayStatusOut(BaseModel):
     date: date
     mood_logged: bool
     evaluation_generated: bool
+
+
+class WeeklyRetroOut(BaseModel):
+    week_start: date
+    week_end: date
+    generated_at: datetime
+    sessions_count: int
+    focused_minutes: float
+    tasks_completed_count: int
+    committed_count: int
+    committed_completed_count: int
+    mood_avg: Optional[float]
+    tasks_completed_names: List[str]
+    quadrant_breakdown: Dict[str, int]
+
+
+class WeeklyRetroGenerateRequest(BaseModel):
+    """Body for POST /api/retro/generate. `week_start` defaults to the
+    current week (server-side) when omitted; any date within the target
+    week is accepted, not just the Monday itself."""
+
+    week_start: Optional[date] = None
+
+
+class PMSuggestedActionOut(BaseModel):
+    """A subset of BacklogTaskUpdateRequest's fields -- "applying" a
+    suggestion in the frontend is just PATCHing /api/backlog/{task_id}
+    with exactly this dict, the same call the Board itself makes."""
+
+    priority: Optional[str] = None
+    is_today: Optional[bool] = None
+    is_this_week: Optional[bool] = None
+
+
+class PMSuggestionOut(BaseModel):
+    id: str
+    kind: str
+    task_id: Optional[int]
+    title: str
+    rationale: str
+    suggested_action: Optional[PMSuggestedActionOut] = None
+
+
+class PMReviewOut(BaseModel):
+    generated_at: datetime
+    model_used: str
+    suggestions: List[PMSuggestionOut]
 
 
 class NowOut(BaseModel):

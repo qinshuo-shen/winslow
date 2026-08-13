@@ -50,11 +50,13 @@ guessed.
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass, field
+from datetime import date as date_cls
 from datetime import datetime
 from typing import Dict, List, Optional
 
 from .config import SESSION_DB_PATH
 from .notion_tasks import PRIORITY_DURATION_MINUTES, PRIORITY_ORDER
+from .weekly import week_start_date
 
 STATUS_NOT_STARTED = "not_started"
 STATUS_IN_PROGRESS = "in_progress"
@@ -85,6 +87,10 @@ CREATE TABLE IF NOT EXISTS today_rollover (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     last_run_date TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS week_rollover (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    last_run_week_start TEXT NOT NULL
+);
 """
 
 # Guarded ALTER TABLE additions -- same lazy-migration pattern used by
@@ -100,6 +106,16 @@ _NEW_COLUMNS = {
     # carried_forward field) so yesterday's marker goes stale for free,
     # with no extra write needed to clear it.
     "carried_forward_date": "TEXT",
+    # Sprint/weekly commitment (Scrum-lite feature set): mirrors is_today's
+    # shape at a coarser granularity. is_this_week is a manual toggle;
+    # week_committed_date is set to that week's Monday only when
+    # is_this_week flips False->True, and is deliberately left untouched
+    # when it flips back off -- same "historical marker that goes stale for
+    # free" reasoning as carried_forward_date, used by the weekly retro to
+    # compute committed-vs-completed after roll_over_week() has cleared
+    # is_this_week for the week.
+    "is_this_week": "INTEGER NOT NULL DEFAULT 0",
+    "week_committed_date": "TEXT",
 }
 
 
@@ -137,6 +153,8 @@ class Task:
     completed_at: Optional[datetime]
     tags: List[str] = field(default_factory=list)
     carried_forward_date: Optional[str] = None
+    is_this_week: bool = False
+    week_committed_date: Optional[str] = None
 
 
 def _row_to_task(row: sqlite3.Row, tags: Optional[List[str]] = None) -> Task:
@@ -150,6 +168,8 @@ def _row_to_task(row: sqlite3.Row, tags: Optional[List[str]] = None) -> Task:
         completed_at=datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None,
         tags=tags or [],
         carried_forward_date=row["carried_forward_date"],
+        is_this_week=bool(row["is_this_week"]),
+        week_committed_date=row["week_committed_date"],
     )
 
 
@@ -366,6 +386,7 @@ def update_task(
     is_today: Optional[bool] = None,
     position: Optional[int] = None,
     tags: Optional[List[str]] = None,
+    is_this_week: Optional[bool] = None,
 ) -> Optional[Task]:
     """Generic partial update for the Board (status/quadrant/today-toggle/
     reorder/notes/tags edits) -- only fields explicitly passed (non-None)
@@ -373,7 +394,10 @@ def update_task(
     means "leave unchanged", same as every other field) -- pass "" to clear
     it. `tags`, if passed, REPLACES the task's full tag set (not a merge) --
     the frontend always sends the complete desired list, same as how a
-    Notion multi-select field is edited."""
+    Notion multi-select field is edited. `is_this_week`, when it flips
+    False->True, also stamps week_committed_date with the current week's
+    Monday -- flipping True->False leaves that date alone (see the
+    _NEW_COLUMNS comment for why)."""
     if priority is not None and priority not in PRIORITY_ORDER:
         raise ValueError(f"Unknown priority quadrant: {priority!r}")
     if status is not None and status not in ALL_STATUSES:
@@ -409,6 +433,12 @@ def update_task(
     if position is not None:
         fields.append("position = ?")
         values.append(position)
+    if is_this_week is not None:
+        fields.append("is_this_week = ?")
+        values.append(1 if is_this_week else 0)
+        if is_this_week:
+            fields.append("week_committed_date = ?")
+            values.append(week_start_date(date_cls.today()).isoformat())
 
     if not fields and tags is None:
         return get_task(task_id)
@@ -513,3 +543,51 @@ def roll_over_today(today: Optional[str] = None) -> RolloverResult:
 
     unmarked = len(stale) - (1 if chosen else 0)
     return RolloverResult(ran=True, carried_task=chosen, unmarked_count=unmarked)
+
+
+@dataclass
+class WeekRolloverResult:
+    ran: bool
+    cleared_count: int
+
+
+def roll_over_week(today: Optional[str] = None) -> WeekRolloverResult:
+    """Idempotent per ISO week (guarded by week_rollover.last_run_week_start):
+    clears is_this_week on every non-completed task still flagged for the
+    week that just ended. Deliberately a reset, not an auto-carry like
+    roll_over_today() -- re-committing for the new week each Monday is the
+    actual "sprint planning" moment this feature exists to create, and
+    there's no clean single-task heuristic to generalize the daily
+    auto-carry to a weekly, potentially-multi-task set. week_committed_date
+    is left untouched on cleared tasks -- it's the historical record the
+    weekly retro keys off, and staleness against the current week is
+    computed at the API layer (same pattern as `carried_forward`)."""
+    today = today or datetime.now().date().isoformat()
+    current_week_start = week_start_date(date_cls.fromisoformat(today)).isoformat()
+    with closing(_connect()) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT last_run_week_start FROM week_rollover WHERE id = 1"
+        ).fetchone()
+        if row and row["last_run_week_start"] == current_week_start:
+            return WeekRolloverResult(ran=False, cleared_count=0)
+
+        stale_rows = conn.execute(
+            "SELECT id FROM tasks WHERE is_this_week = 1 AND status != ?",
+            (STATUS_COMPLETED,),
+        ).fetchall()
+        for r in stale_rows:
+            conn.execute("UPDATE tasks SET is_this_week = 0 WHERE id = ?", (r["id"],))
+
+        conn.execute(
+            "UPDATE tasks SET is_this_week = 0 WHERE is_this_week = 1 AND status = ?",
+            (STATUS_COMPLETED,),
+        )
+        conn.execute(
+            "INSERT INTO week_rollover (id, last_run_week_start) VALUES (1, ?) "
+            "ON CONFLICT(id) DO UPDATE SET last_run_week_start = excluded.last_run_week_start",
+            (current_week_start,),
+        )
+        conn.commit()
+
+    return WeekRolloverResult(ran=True, cleared_count=len(stale_rows))
