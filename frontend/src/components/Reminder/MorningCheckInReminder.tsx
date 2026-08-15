@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useMorningCheckIn } from "./useMorningCheckIn";
 import "./MorningCheckInReminder.css";
 
@@ -8,7 +9,14 @@ import "./MorningCheckInReminder.css";
 // "not now," dismissal is per-browser (localStorage) not app state. Unlike
 // the evening reminder, there's no single-tap action to offer here (no
 // "MoodScaleButtons" equivalent) -- committing to a task means picking one
-// on the Board, so the CTA scrolls there instead of acting inline.
+// on the Board, so the CTA navigates there instead of acting inline.
+//
+// 2026-08 page-split redesign: rendered globally in Layout.tsx (like
+// EndOfDayReminder) rather than becoming Tasks-page content, so it's not
+// lost by being on the "wrong" page. Its CTA originally did
+// document.getElementById("board")?.scrollIntoView(...), which silently
+// no-ops now that Board only renders on /tasks -- fixed to navigate there
+// instead, same fix already applied to EndOfDayReminder's equivalent bug.
 
 const DISMISS_KEY = "winslow.morning-checkin-dismissed";
 
@@ -18,6 +26,7 @@ function todayIso(): string {
 
 export function MorningCheckInReminder() {
   const { status } = useMorningCheckIn();
+  const navigate = useNavigate();
   const [dismissed, setDismissed] = useState(() => localStorage.getItem(DISMISS_KEY) === todayIso());
 
   useEffect(() => {
@@ -37,7 +46,7 @@ export function MorningCheckInReminder() {
   }
 
   function handleGoToBoard() {
-    document.getElementById("board")?.scrollIntoView({ behavior: "smooth" });
+    navigate("/tasks");
   }
 
   return (

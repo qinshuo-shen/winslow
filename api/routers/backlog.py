@@ -69,6 +69,7 @@ def create_task(body: BacklogTaskCreateRequest) -> BacklogTaskOut:
         task = tasks.add_task(
             name=body.name, priority=body.priority, notes=body.notes,
             specific_project=body.specific_project, tags=body.tags,
+            project_id=body.project_id,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -85,7 +86,7 @@ def patch_task(task_id: int, body: BacklogTaskUpdateRequest) -> BacklogTaskOut:
             name=body.name, priority=body.priority, notes=body.notes,
             status=body.status, specific_project=body.specific_project,
             is_today=body.is_today, position=body.position, tags=body.tags,
-            is_this_week=body.is_this_week,
+            is_this_week=body.is_this_week, project_id=body.project_id,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

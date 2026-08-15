@@ -11,15 +11,24 @@ Phase 6 mounts `frontend/dist/` (the Vite build output, produced by
 serves `index.html` for `/` and hashed assets for everything under
 `/assets/*` -- `uvicorn api.main:app` then becomes the one command that
 serves both the API and the dashboard UI, matching this project's existing
-single-command ethos (`streamlit run app.py`, `focus start`). This is a
-single dashboard page, not a multi-route SPA (no React Router in
-frontend/src -- confirmed by grep, matching the original plan's "no
-routing library needed" call), so a plain static mount is sufficient; no
-catch-all history-mode fallback route is needed. The mount is added *after*
-all `/api/*` routers are registered below, since StaticFiles would
-otherwise shadow them -- FastAPI matches routes in registration order, so
-the routers registered first take precedence for `/api/*` paths and the
-static mount only ever handles what's left.
+single-command ethos (`streamlit run app.py`, `focus start`). The mount is
+added *after* all `/api/*` routers are registered below, since StaticFiles
+would otherwise shadow them -- FastAPI matches routes in registration
+order, so the routers registered first take precedence for `/api/*` paths
+and the static mount only ever handles what's left.
+
+2026-08 page-split redesign: the frontend gained React Router (Tasks/
+Projects/Focus/Evaluation each a real bookmarkable route) -- no longer true
+that this is "a single dashboard page, not a multi-route SPA." That broke
+StaticFiles(html=True)'s fallback: it only serves index.html for a path
+resolving to an existing *directory* on disk, not for an arbitrary client
+route (verified directly against Starlette's staticfiles.py), so a hard
+refresh on e.g. `/projects` in production would 404 with no client-side
+router able to catch it. SPA_ROUTES below registers each of those paths as
+an explicit small route returning index.html -- placed *before* the
+StaticFiles mount for the same registration-order reason as the /api/*
+routers (a mount at "/" would otherwise shadow anything registered after
+it).
 
 Phase 5 adds a `lifespan` background task that calls
 focus_session_manager.manager.tick() once a second for as long as the
@@ -82,12 +91,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from procrastination_tool import device_lock
 from procrastination_tool.focus_session_manager import manager as focus_manager
 
-from .routers import backlog, calendar, evaluation, focus, now, pm_agent, retro, sessions, tags
+from .routers import backlog, calendar, evaluation, focus, now, pm_agent, projects, retro, sessions, tags
 
 # frontend/dist relative to this file (api/main.py -> api/ -> repo root -> frontend/dist)
 FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
@@ -134,6 +144,8 @@ app.include_router(evaluation.router, prefix="/api")
 app.include_router(retro.router, prefix="/api")
 # Scrum-lite: AI PM-agent (suggest-only backlog review).
 app.include_router(pm_agent.router, prefix="/api")
+# 2026-08 page-split redesign: Project tracking -- see procrastination_tool/projects.py.
+app.include_router(projects.router, prefix="/api")
 
 
 @app.get("/api/health")
@@ -141,10 +153,26 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-# Registered last so it never shadows an /api/* router above -- see the
-# module docstring for why registration order is what makes this safe.
-# html=True makes StaticFiles serve dist/index.html for `/` (and for any
-# other unmatched path, which is harmless here since there's no client-side
-# router to hand those off to).
+# 2026-08 page-split redesign: explicit SPA-fallback routes, one per React
+# Router path, each just serving the built index.html so the client-side
+# router can take over from there -- see the module docstring above for why
+# StaticFiles(html=True) alone can't cover this. Must be registered before
+# the StaticFiles mount below (same registration-order reasoning as the
+# /api/* routers above).
+SPA_ROUTES = ["/tasks", "/projects", "/focus", "/evaluation"]
+if FRONTEND_DIST.is_dir():
+    for _path in SPA_ROUTES:
+        app.add_api_route(
+            _path,
+            lambda: FileResponse(FRONTEND_DIST / "index.html"),
+            methods=["GET"],
+            include_in_schema=False,
+        )
+
+# Registered last so it never shadows an /api/* router or an SPA-fallback
+# route above -- see the module docstring for why registration order is
+# what makes this safe. html=True makes StaticFiles serve dist/index.html
+# for `/` itself and for any directory-shaped path; the explicit routes
+# above cover the non-directory client routes StaticFiles can't.
 if FRONTEND_DIST.is_dir():
     app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")

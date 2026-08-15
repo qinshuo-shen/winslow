@@ -226,6 +226,9 @@ export interface BacklogTaskOut {
   carried_forward: boolean;
   is_this_week: boolean;
   is_current_week_commitment: boolean;
+  // 2026-08 page-split redesign: optional link to a Project (ProjectOut
+  // below) this task is a breakdown step of.
+  project_id: number | null;
 }
 
 export interface BacklogTodayStatusOut {
@@ -239,11 +242,15 @@ export interface BacklogTaskCreateRequest {
   notes?: string;
   specific_project?: string | null;
   tags?: string[];
+  project_id?: number | null;
 }
 
 // Board (2026-08-11 redesign, same-day follow-up): PATCH /api/backlog/{id}
 // -- every field optional, only what's set is changed. `tags`, if present,
-// REPLACES the task's full tag set (not a merge).
+// REPLACES the task's full tag set (not a merge). `project_id` can't be
+// cleared with `null` (indistinguishable from "field omitted" on the
+// backend) -- send `0` to unlink, matching BacklogTaskUpdateRequest's
+// Pydantic counterpart.
 export interface BacklogTaskUpdateRequest {
   name?: string;
   priority?: string;
@@ -254,6 +261,7 @@ export interface BacklogTaskUpdateRequest {
   position?: number;
   tags?: string[];
   is_this_week?: boolean;
+  project_id?: number;
 }
 
 // Fourth same-day follow-up: two-level tag hierarchy (Project / sub-project).
@@ -348,4 +356,31 @@ export interface NowOut {
   swap_count: number;
   max_swaps: number;
   deadline_at: string | null; // datetime -- the task's actual binding deadline (engagement, not completion)
+}
+
+// 2026-08 page-split redesign: Project tracking -- a standalone entity for
+// work spanning more than one task, distinct from the tag Project/
+// sub-project hierarchy above (TagOut/TagCreateRequest). Projects have
+// their own tags via the same shared tag pool.
+
+export interface ProjectOut {
+  id: number;
+  name: string;
+  status: TaskStatus;
+  notes: string;
+  created_at: string; // datetime
+  tags: string[];
+}
+
+export interface ProjectCreateRequest {
+  name: string;
+  notes?: string;
+  tags?: string[];
+}
+
+export interface ProjectUpdateRequest {
+  name?: string;
+  status?: TaskStatus;
+  notes?: string;
+  tags?: string[];
 }

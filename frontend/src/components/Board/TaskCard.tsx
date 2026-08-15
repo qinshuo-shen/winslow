@@ -4,6 +4,10 @@ import { quadrantClass } from "./quadrantStyle";
 
 interface TaskCardProps {
   task: BacklogTaskOut;
+  // Resolved client-side from Board's fetched projects list (same
+  // convention as tag names elsewhere in this app) -- undefined when the
+  // task has no project_id or the project lookup hasn't loaded yet.
+  projectName?: string;
   pending: boolean;
   onOpenNotes: () => void;
   onStatusChange: (status: TaskStatus) => void;
@@ -15,6 +19,7 @@ interface TaskCardProps {
 
 export function TaskCard({
   task,
+  projectName,
   pending,
   onOpenNotes,
   onStatusChange,
@@ -55,6 +60,10 @@ export function TaskCard({
 
       {task.specific_project && (
         <span className="board-card__project">{task.specific_project}</span>
+      )}
+
+      {projectName && (
+        <span className="board-card__project board-card__project--linked">📁 {projectName}</span>
       )}
 
       {task.tags.length > 0 && (

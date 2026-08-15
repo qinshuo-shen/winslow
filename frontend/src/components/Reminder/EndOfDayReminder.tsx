@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { MoodScaleButtons } from "../Evaluation/MoodScaleButtons";
 import { useEndOfDayReminder } from "./useEndOfDayReminder";
 import "./EndOfDayReminder.css";
@@ -28,14 +29,17 @@ function todayIso(): string {
 }
 
 interface EndOfDayReminderProps {
-  // Bumps App.tsx's moodRefreshKey so the Evaluation section's own mood
-  // list (a separate component instance/state) picks up a mood logged
-  // here too -- see Evaluation.tsx's moodRefreshKey prop doc.
+  // Bumps Layout's moodRefreshKey so the Evaluation page's own mood list (a
+  // separate component instance/state, possibly on a different route right
+  // now) picks up a mood logged here too -- see Evaluation.tsx's
+  // moodRefreshKey prop doc and Layout.tsx/EvaluationPage.tsx's Outlet
+  // context wiring.
   onMoodLogged?: () => void;
 }
 
 export function EndOfDayReminder({ onMoodLogged }: EndOfDayReminderProps) {
   const { status, refetch } = useEndOfDayReminder();
+  const navigate = useNavigate();
 
   function handleMoodLogged() {
     refetch();
@@ -62,7 +66,11 @@ export function EndOfDayReminder({ onMoodLogged }: EndOfDayReminderProps) {
   }
 
   function handleGenerateClick() {
-    document.getElementById("evaluation")?.scrollIntoView({ behavior: "smooth" });
+    // 2026-08 page-split redesign: Evaluation now only renders on
+    // /evaluation, so the old scrollIntoView("evaluation") would silently
+    // no-op on every other route -- navigate there instead, the whole page
+    // is the destination now, no in-page anchor needed.
+    navigate("/evaluation");
   }
 
   return (

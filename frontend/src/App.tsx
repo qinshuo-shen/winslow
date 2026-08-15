@@ -1,13 +1,9 @@
-import { useState } from "react";
-import { Board } from "./components/Board/Board";
-import { FocusTimerWidget } from "./components/FocusTimer/FocusTimerWidget";
-import { FocusStats } from "./components/FocusStats/FocusStats";
-import { Evaluation } from "./components/Evaluation/Evaluation";
-import { EndOfDayReminder } from "./components/Reminder/EndOfDayReminder";
-import { MorningCheckInReminder } from "./components/Reminder/MorningCheckInReminder";
-import { Retro } from "./components/Retro/Retro";
-import { PMAgentPanel } from "./components/PMAgent/PMAgentPanel";
-import "./App.css";
+import { Navigate, Route, Routes } from "react-router-dom";
+import { Layout } from "./components/Layout/Layout";
+import { ProjectBoard } from "./components/Projects/ProjectBoard";
+import { TasksPage } from "./pages/TasksPage";
+import { FocusPage } from "./pages/FocusPage";
+import { EvaluationPage } from "./pages/EvaluationPage";
 
 // 2026-08-11 redesign, same-day follow-up: replaces the old multi-panel
 // "dashboard you visit" (Today's schedule, the manual drag-and-drop
@@ -38,40 +34,37 @@ import "./App.css";
 // directory were deliberately left alone -- pure internal plumbing with no
 // user-facing naming benefit, and renaming either risks breaking the
 // launchd plists' hardcoded paths (see launchd/*.plist) across both Macs.
+//
+// 2026-08 page-split redesign: the single stacked dashboard above became
+// overwhelming, so it's split into 4 routed pages (Tasks/Projects/Focus/
+// Evaluation) via React Router -- a deliberate departure from this app's
+// prior "single dashboard page, no client router" convention (see
+// api/main.py's docstring history). App.tsx is now just route
+// definitions; the header/nav/EndOfDayReminder shell that used to live
+// here moved to components/Layout/Layout.tsx, rendered once and shared
+// across every route via an <Outlet />.
+//
+// Reconciled same day with the Scrum-lite feature set (sprints/retro/
+// velocity/AI PM-agent, built in parallel on origin/master while this
+// split was in progress on a stale local checkout): MorningCheckInReminder
+// joined EndOfDayReminder in Layout.tsx (global, same "don't lose a
+// proactive nudge to routing" reasoning); PMAgentPanel moved into
+// pages/TasksPage.tsx alongside Board, since backlog review is literally
+// what Page 1 is for; Retro moved into EvaluationPage.tsx alongside
+// Evaluation, the "weekly" half of Page 4's stated purpose.
 
 function App() {
-  const [statsRefreshKey, setStatsRefreshKey] = useState(0);
-  const [moodRefreshKey, setMoodRefreshKey] = useState(0);
-  const [boardRefreshKey, setBoardRefreshKey] = useState(0);
-
   return (
-    <div className="dashboard">
-      <header className="dashboard__header">
-        <h1>
-          <span className="dashboard__title-mascot" aria-hidden="true">
-            🐢
-          </span>
-          <span className="dashboard__title-text">Winslow</span>
-        </h1>
-        <p className="dashboard__date">
-          {new Date().toLocaleDateString(undefined, {
-            weekday: "long",
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-          })}
-        </p>
-      </header>
-
-      <MorningCheckInReminder />
-      <EndOfDayReminder onMoodLogged={() => setMoodRefreshKey((k) => k + 1)} />
-      <Board refreshKey={boardRefreshKey} />
-      <PMAgentPanel onTaskApplied={() => setBoardRefreshKey((k) => k + 1)} />
-      <FocusTimerWidget onSessionEnd={() => setStatsRefreshKey((k) => k + 1)} />
-      <FocusStats refreshKey={statsRefreshKey} />
-      <Evaluation moodRefreshKey={moodRefreshKey} />
-      <Retro />
-    </div>
+    <Routes>
+      <Route element={<Layout />}>
+        <Route index element={<Navigate to="/tasks" replace />} />
+        <Route path="/tasks" element={<TasksPage />} />
+        <Route path="/projects" element={<ProjectBoard />} />
+        <Route path="/focus" element={<FocusPage />} />
+        <Route path="/evaluation" element={<EvaluationPage />} />
+        <Route path="*" element={<Navigate to="/tasks" replace />} />
+      </Route>
+    </Routes>
   );
 }
 

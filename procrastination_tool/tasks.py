@@ -116,6 +116,13 @@ _NEW_COLUMNS = {
     # is_this_week for the week.
     "is_this_week": "INTEGER NOT NULL DEFAULT 0",
     "week_committed_date": "TEXT",
+    # 2026-08 page-split redesign: optional link to a projects.py Project
+    # this task is a breakdown step of -- see that module's docstring for
+    # why it's a new standalone table rather than reusing the tag Project
+    # hierarchy below. Unenforced at the SQLite level (this project never
+    # turns PRAGMA foreign_keys on) -- cleared explicitly by
+    # projects.delete_project() rather than relying on a real FK cascade.
+    "project_id": "INTEGER REFERENCES projects(id)",
 }
 
 
@@ -155,6 +162,7 @@ class Task:
     carried_forward_date: Optional[str] = None
     is_this_week: bool = False
     week_committed_date: Optional[str] = None
+    project_id: Optional[int] = None
 
 
 def _row_to_task(row: sqlite3.Row, tags: Optional[List[str]] = None) -> Task:
@@ -170,6 +178,7 @@ def _row_to_task(row: sqlite3.Row, tags: Optional[List[str]] = None) -> Task:
         carried_forward_date=row["carried_forward_date"],
         is_this_week=bool(row["is_this_week"]),
         week_committed_date=row["week_committed_date"],
+        project_id=row["project_id"],
     )
 
 
@@ -289,11 +298,16 @@ def add_task(
     specific_project: Optional[str] = None,
     status: str = STATUS_NOT_STARTED,
     tags: Optional[List[str]] = None,
+    project_id: Optional[int] = None,
 ) -> Task:
     """`status` defaults to not-started for normal in-app task creation, but
     is accepted as a parameter so migrate_notion_tasks.py can preserve each
     Notion task's actual status (in-progress/on-hold/completed) instead of
-    resetting everything to not-started on import."""
+    resetting everything to not-started on import.
+
+    `project_id` optionally links this task as a breakdown step of a
+    projects.py Project -- distinct from `specific_project` (legacy
+    free-text) and `tags` (the generic label system)."""
     name = name.strip()
     if not name:
         raise ValueError("Task name can't be empty")
@@ -307,10 +321,10 @@ def add_task(
     with closing(_connect()) as conn:
         cur = conn.execute(
             "INSERT INTO tasks (name, priority, effort_minutes, notes, status, created_at, "
-            "specific_project, is_today, position, completed_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?)",
+            "specific_project, is_today, position, completed_at, project_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)",
             (name, priority, effort_minutes, notes, status, created_at.isoformat(),
-             specific_project, completed_at.isoformat() if completed_at else None),
+             specific_project, completed_at.isoformat() if completed_at else None, project_id),
         )
         task_id = cur.lastrowid
         normalized_tags = _normalize_tags(tags) if tags else []
@@ -321,7 +335,7 @@ def add_task(
         id=task_id, name=name, priority=priority, effort_minutes=effort_minutes,
         notes=notes, status=status, created_at=created_at,
         specific_project=specific_project, is_today=False, position=0,
-        completed_at=completed_at, tags=normalized_tags,
+        completed_at=completed_at, tags=normalized_tags, project_id=project_id,
     )
 
 
@@ -366,6 +380,21 @@ def list_all_tasks() -> List[Task]:
     return result
 
 
+def list_tasks_for_project(project_id: int) -> List[Task]:
+    """A project's breakdown steps, oldest first -- backs the Project
+    roadmap's vertical milestone timeline (see projects.py). Chronological
+    order rather than manual `position`, matching list_all_tasks()'s own
+    observation that the Board has no real drag-and-drop reordering to
+    borrow a "manual order" convention from."""
+    with closing(_connect()) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM tasks WHERE project_id = ? ORDER BY created_at", (project_id,)
+        ).fetchall()
+        tags_by_id = _tags_by_task_id(conn, [r["id"] for r in rows])
+    return [_row_to_task(r, tags_by_id[r["id"]]) for r in rows]
+
+
 def get_task(task_id: int) -> Optional[Task]:
     with closing(_connect()) as conn:
         conn.row_factory = sqlite3.Row
@@ -387,6 +416,7 @@ def update_task(
     position: Optional[int] = None,
     tags: Optional[List[str]] = None,
     is_this_week: Optional[bool] = None,
+    project_id: Optional[int] = None,
 ) -> Optional[Task]:
     """Generic partial update for the Board (status/quadrant/today-toggle/
     reorder/notes/tags edits) -- only fields explicitly passed (non-None)
@@ -397,7 +427,10 @@ def update_task(
     Notion multi-select field is edited. `is_this_week`, when it flips
     False->True, also stamps week_committed_date with the current week's
     Monday -- flipping True->False leaves that date alone (see the
-    _NEW_COLUMNS comment for why)."""
+    _NEW_COLUMNS comment for why). `project_id` follows the same
+    "None means leave unchanged" rule -- pass 0 (never a real task/project
+    id) to unlink it, since JSON has no way to distinguish "field omitted"
+    from "field sent as null" once it reaches an Optional Python param."""
     if priority is not None and priority not in PRIORITY_ORDER:
         raise ValueError(f"Unknown priority quadrant: {priority!r}")
     if status is not None and status not in ALL_STATUSES:
@@ -439,6 +472,9 @@ def update_task(
         if is_this_week:
             fields.append("week_committed_date = ?")
             values.append(week_start_date(date_cls.today()).isoformat())
+    if project_id is not None:
+        fields.append("project_id = ?")
+        values.append(project_id if project_id != 0 else None)
 
     if not fields and tags is None:
         return get_task(task_id)

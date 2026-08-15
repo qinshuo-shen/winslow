@@ -242,6 +242,9 @@ class BacklogTaskOut(BaseModel):
     carried_forward: bool = False
     is_this_week: bool = False
     is_current_week_commitment: bool = False
+    # 2026-08 page-split redesign: optional link to a Project this task is a
+    # breakdown step of -- see ProjectOut below and procrastination_tool.projects.
+    project_id: Optional[int] = None
 
 
 class BacklogTodayStatusOut(BaseModel):
@@ -258,6 +261,7 @@ class BacklogTaskCreateRequest(BaseModel):
     notes: str = ""
     specific_project: Optional[str] = None
     tags: List[str] = []
+    project_id: Optional[int] = None
 
 
 class BacklogTaskUpdateRequest(BaseModel):
@@ -266,7 +270,10 @@ class BacklogTaskUpdateRequest(BaseModel):
     notes/tags edit). Every field is optional; only fields explicitly set
     are changed (see procrastination_tool.tasks.update_task). `tags`, if
     present, REPLACES the task's full tag set (not a merge) -- the
-    frontend always sends the complete desired list."""
+    frontend always sends the complete desired list. `project_id` can't be
+    cleared with `null` (indistinguishable from "field omitted" once this
+    reaches an Optional Python param) -- send `0` to unlink, matching
+    tasks.update_task's own documented sentinel."""
 
     name: Optional[str] = None
     priority: Optional[str] = None
@@ -277,6 +284,38 @@ class BacklogTaskUpdateRequest(BaseModel):
     position: Optional[int] = None
     tags: Optional[List[str]] = None
     is_this_week: Optional[bool] = None
+    project_id: Optional[int] = None
+
+
+# 2026-08 page-split redesign: Project tracking (procrastination_tool.projects)
+# -- a standalone entity for work spanning more than one task, distinct from
+# the tag Project/sub-project hierarchy below (TagOut/TagCreateRequest).
+
+
+class ProjectOut(BaseModel):
+    id: int
+    name: str
+    status: str
+    notes: str
+    created_at: datetime
+    tags: List[str] = []
+
+
+class ProjectCreateRequest(BaseModel):
+    name: str
+    notes: str = ""
+    tags: List[str] = []
+
+
+class ProjectUpdateRequest(BaseModel):
+    """Body for PATCH /api/projects/{id} -- partial update, only fields
+    explicitly set are changed (see procrastination_tool.projects.update_project).
+    `tags`, if present, REPLACES the project's full tag set (not a merge)."""
+
+    name: Optional[str] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+    tags: Optional[List[str]] = None
 
 
 # Fourth same-day follow-up: two-level tag hierarchy (Project / sub-project).

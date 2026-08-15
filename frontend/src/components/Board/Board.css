@@ -249,6 +249,15 @@
   opacity: 0.7;
 }
 
+/* The new Project-entity link (project_id), distinct from the legacy
+   free-text specific_project chip above -- slightly stronger opacity/color
+   so a linked Project reads as a real reference, not a loose label. */
+.board-card__project--linked {
+  display: block;
+  color: var(--accent);
+  opacity: 0.9;
+}
+
 /* Calm/neutral tone deliberately -- this marks continuity, not a warning or
    a missed deadline, so it reuses the same muted badge look as a tag rather
    than any urgency color (red/orange). */

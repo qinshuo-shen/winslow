@@ -1,0 +1,26 @@
+.nav-bar {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.6rem;
+}
+
+.nav-bar__link {
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  color: var(--text);
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+.nav-bar__link:hover {
+  border-color: var(--border);
+}
+
+.nav-bar__link--active {
+  background: var(--accent);
+  border-color: var(--accent-border);
+  color: #fff;
+}

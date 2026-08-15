@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiDelete, apiGet, apiPatch, ApiError } from "../../api/client";
 import { PRIORITY_QUADRANTS, quadrantLabel } from "../../api/types";
-import type { BacklogTaskOut, BacklogTaskUpdateRequest, TagOut, TaskStatus } from "../../api/types";
+import type {
+  BacklogTaskOut,
+  BacklogTaskUpdateRequest,
+  ProjectOut,
+  TagOut,
+  TaskStatus,
+} from "../../api/types";
 import { TaskCard } from "./TaskCard";
 import { NotesModal } from "./NotesModal";
 import { NewTaskModal } from "./NewTaskModal";
@@ -58,6 +64,7 @@ function groupByQuadrant(tasks: BacklogTaskOut[]): Record<string, GroupedColumn>
 export function Board({ onTasksChanged, refreshKey }: BoardProps) {
   const [tasks, setTasks] = useState<BacklogTaskOut[] | null>(null);
   const [tagTree, setTagTree] = useState<TagOut[]>([]);
+  const [projects, setProjects] = useState<ProjectOut[]>([]);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [sprintOnly, setSprintOnly] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,10 +89,24 @@ export function Board({ onTasksChanged, refreshKey }: BoardProps) {
     }
   }
 
+  async function refreshProjects() {
+    try {
+      setProjects(await apiGet<ProjectOut[]>("/projects"));
+    } catch {
+      // Non-critical -- the "Linked project" picker/chip just fall back to empty.
+    }
+  }
+
   useEffect(() => {
     refresh();
     refreshTags();
+    refreshProjects();
   }, [refreshKey]);
+
+  const projectNameById = useMemo(
+    () => new Map(projects.map((p) => [p.id, p.name])),
+    [projects],
+  );
 
   const topLevelProjects = useMemo(
     () => tagTree.filter((t) => t.parent === null).map((t) => t.name).sort(),
@@ -170,6 +191,7 @@ export function Board({ onTasksChanged, refreshKey }: BoardProps) {
                     <TaskCard
                       key={t.id}
                       task={t}
+                      projectName={t.project_id !== null ? projectNameById.get(t.project_id) : undefined}
                       pending={pending}
                       onOpenNotes={() => setNotesTask(t)}
                       onStatusChange={(status: TaskStatus) => patchTask(t.id, { status })}
@@ -244,6 +266,7 @@ export function Board({ onTasksChanged, refreshKey }: BoardProps) {
         <NotesModal
           task={notesTask}
           tagTree={tagTree}
+          projects={projects}
           onClose={() => setNotesTask(null)}
           onSaved={(updated) => {
             setTasks((prev) => prev?.map((t) => (t.id === updated.id ? updated : t)) ?? prev);
@@ -257,6 +280,7 @@ export function Board({ onTasksChanged, refreshKey }: BoardProps) {
       {showNewTask && (
         <NewTaskModal
           tagTree={tagTree}
+          projects={projects}
           onClose={() => setShowNewTask(false)}
           onCreated={(created) => {
             setTasks((prev) => (prev ? [...prev, created] : [created]));

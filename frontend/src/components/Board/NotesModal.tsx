@@ -1,7 +1,7 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { apiPatch, ApiError } from "../../api/client";
-import type { BacklogTaskOut, BacklogTaskUpdateRequest, TagOut } from "../../api/types";
+import type { BacklogTaskOut, BacklogTaskUpdateRequest, ProjectOut, TagOut } from "../../api/types";
 import { TagEditor } from "./TagEditor";
 import "./TaskModal.css";
 
@@ -14,18 +14,29 @@ import "./TaskModal.css";
 // Tags (same-day follow-up) share this modal rather than getting their own
 // -- it's already the task's "detail view", same place Notion would put
 // them. Shares TaskModal.css's overlay/panel styling with NewTaskModal.
+//
+// 2026-08 page-split redesign: `projects` is optional -- ProjectRoadmapModal
+// reuses this component to edit a step opened from the timeline without
+// needing to fetch/thread the full projects list just for that path (a
+// step's own project link isn't editable from inside its own project's
+// roadmap anyway). The Board always passes it so its "Linked project"
+// picker works there.
 
 interface NotesModalProps {
   task: BacklogTaskOut;
   tagTree: TagOut[];
+  projects?: ProjectOut[];
   onClose: () => void;
   onSaved: (updated: BacklogTaskOut) => void;
   onTagCreated?: () => void;
 }
 
-export function NotesModal({ task, tagTree, onClose, onSaved, onTagCreated }: NotesModalProps) {
+export function NotesModal({ task, tagTree, projects, onClose, onSaved, onTagCreated }: NotesModalProps) {
   const [notes, setNotes] = useState(task.notes);
   const [tags, setTags] = useState<string[]>(task.tags);
+  const [linkedProjectId, setLinkedProjectId] = useState<string>(
+    task.project_id !== null ? String(task.project_id) : "",
+  );
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,7 +44,11 @@ export function NotesModal({ task, tagTree, onClose, onSaved, onTagCreated }: No
     setPending(true);
     setError(null);
     try {
-      const body: BacklogTaskUpdateRequest = { notes, tags };
+      const body: BacklogTaskUpdateRequest = {
+        notes,
+        tags,
+        project_id: linkedProjectId ? Number(linkedProjectId) : 0,
+      };
       const updated = await apiPatch<BacklogTaskOut>(`/backlog/${task.id}`, body);
       onSaved(updated);
       onClose();
@@ -55,6 +70,24 @@ export function NotesModal({ task, tagTree, onClose, onSaved, onTagCreated }: No
         </header>
 
         {error && <p className="task-modal__error">{error}</p>}
+
+        {projects && (
+          <div className="task-modal__fields">
+            <select
+              value={linkedProjectId}
+              onChange={(e) => setLinkedProjectId(e.target.value)}
+              disabled={pending}
+              aria-label="Linked project"
+            >
+              <option value="">No linked project</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <TagEditor
           tags={tags}

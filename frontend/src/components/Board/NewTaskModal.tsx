@@ -2,7 +2,7 @@ import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { apiPost, ApiError } from "../../api/client";
 import { PRIORITY_QUADRANTS, quadrantLabel } from "../../api/types";
-import type { BacklogTaskCreateRequest, BacklogTaskOut, TagOut } from "../../api/types";
+import type { BacklogTaskCreateRequest, BacklogTaskOut, ProjectOut, TagOut } from "../../api/types";
 import { TagEditor } from "./TagEditor";
 import "./TaskModal.css";
 
@@ -12,18 +12,29 @@ import "./TaskModal.css";
 // separately opening NotesModal to attach notes/tags. Shares TaskModal.css
 // and its overlay/panel shape with NotesModal (the same modal used to
 // edit an existing task's notes/tags after creation).
+//
+// 2026-08 page-split redesign: an optional "Linked project" picker (the
+// bottom-up half of task<->Project assignment -- the primary, top-down
+// half is the roadmap popup's own quick-add, see ProjectRoadmapModal.tsx).
+// Deliberately a separate control from the "Project (optional)" free-text
+// field above and from TagEditor's own "Project (optional)…" tag picker --
+// three unrelated concepts (specific_project legacy string, the tag
+// Project/sub-project hierarchy, and a real linked Project entity) that
+// happen to share the word "Project."
 
 interface NewTaskModalProps {
   tagTree: TagOut[];
+  projects: ProjectOut[];
   onClose: () => void;
   onCreated: (task: BacklogTaskOut) => void;
   onTagCreated?: () => void;
 }
 
-export function NewTaskModal({ tagTree, onClose, onCreated, onTagCreated }: NewTaskModalProps) {
+export function NewTaskModal({ tagTree, projects, onClose, onCreated, onTagCreated }: NewTaskModalProps) {
   const [name, setName] = useState("");
   const [priority, setPriority] = useState<string>("Quick Wins (High Impact-Low Effort)");
   const [project, setProject] = useState("");
+  const [linkedProjectId, setLinkedProjectId] = useState<string>("");
   const [tags, setTags] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
   const [pending, setPending] = useState(false);
@@ -43,6 +54,7 @@ export function NewTaskModal({ tagTree, onClose, onCreated, onTagCreated }: NewT
         notes,
         specific_project: project.trim() || null,
         tags,
+        project_id: linkedProjectId ? Number(linkedProjectId) : null,
       };
       const created = await apiPost<BacklogTaskOut>("/backlog", body);
       onCreated(created);
@@ -90,6 +102,19 @@ export function NewTaskModal({ tagTree, onClose, onCreated, onTagCreated }: NewT
             onChange={(e) => setProject(e.target.value)}
             disabled={pending}
           />
+          <select
+            value={linkedProjectId}
+            onChange={(e) => setLinkedProjectId(e.target.value)}
+            disabled={pending}
+            aria-label="Linked project"
+          >
+            <option value="">Linked project (optional)…</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
         </div>
 
         <TagEditor
