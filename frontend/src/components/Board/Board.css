@@ -66,7 +66,7 @@
 
 .board__columns {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 1.25rem;
 }
 
@@ -86,6 +86,10 @@
      instead of growing the whole page -- the title stays outside this
      scroll area (below) so it's always visible while scrolling. */
   max-height: 70vh;
+  /* Without this, a card's non-shrinking content (e.g. the controls row)
+     can push this column's min-content wider than its 1fr share, blowing
+     out the grid and the whole page's width. */
+  min-width: 0;
 }
 
 .board__column-title {
@@ -213,6 +217,7 @@
 
 .board-card__row--controls {
   margin-top: 0.4rem;
+  flex-wrap: wrap;
 }
 
 .board-card__name {
@@ -227,6 +232,7 @@
   display: flex;
   align-items: center;
   gap: 0.35rem;
+  overflow-wrap: break-word;
 }
 
 .board-card__name:hover {
