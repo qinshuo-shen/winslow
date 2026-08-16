@@ -46,8 +46,8 @@ import "./Board.css";
 // quick-add can opt into starting as a draft (`is_draft`) instead of
 // landing straight in the Task Pool. Drafts are excluded from the
 // Today/Pool columns entirely and shown in their own "Drafts" section
-// instead, narrowed by the same project tab, with a "Release to Pool"
-// action per card.
+// below them instead, narrowed by the same project tab, with a
+// "Release to Pool" action per card.
 
 interface BoardProps {
   onTasksChanged?: () => void;
@@ -321,14 +321,14 @@ export function Board({ onTasksChanged, refreshKey }: BoardProps) {
 
       {tasks === null && !error && <p className="board__loading">Loading…</p>}
 
-      {tasks !== null && visibleDrafts.length > 0 && renderDraftsSection()}
-
       {tasks !== null && (
         <div className="board__columns">
           {renderColumn("today", "Today")}
           {renderColumn("pool", "Task Pool")}
         </div>
       )}
+
+      {tasks !== null && visibleDrafts.length > 0 && renderDraftsSection()}
 
       {notesTask && (
         <NotesModal
