@@ -245,6 +245,9 @@ class BacklogTaskOut(BaseModel):
     # 2026-08 page-split redesign: optional link to a Project this task is a
     # breakdown step of -- see ProjectOut below and procrastination_tool.projects.
     project_id: Optional[int] = None
+    # Draft-stage Roadmap breakdown steps: True until explicitly released to
+    # the Task Pool via PATCH is_draft=False.
+    is_draft: bool = False
 
 
 class BacklogTodayStatusOut(BaseModel):
@@ -262,6 +265,7 @@ class BacklogTaskCreateRequest(BaseModel):
     specific_project: Optional[str] = None
     tags: List[str] = []
     project_id: Optional[int] = None
+    is_draft: bool = False
 
 
 class BacklogTaskUpdateRequest(BaseModel):
@@ -285,6 +289,7 @@ class BacklogTaskUpdateRequest(BaseModel):
     tags: Optional[List[str]] = None
     is_this_week: Optional[bool] = None
     project_id: Optional[int] = None
+    is_draft: Optional[bool] = None
 
 
 # 2026-08 page-split redesign: Project tracking (procrastination_tool.projects)

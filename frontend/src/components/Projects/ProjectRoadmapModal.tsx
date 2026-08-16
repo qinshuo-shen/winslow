@@ -57,6 +57,9 @@ export function ProjectRoadmapModal({
 
   const [newStepName, setNewStepName] = useState("");
   const [newStepPriority, setNewStepPriority] = useState<string>(PRIORITY_QUADRANTS[0]);
+  // Per-step opt-in, chosen at add time -- unchecked (straight to the Task
+  // Pool) preserves the form's existing default behavior.
+  const [newStepIsDraft, setNewStepIsDraft] = useState(false);
   const [addPending, setAddPending] = useState(false);
 
   async function refreshSteps() {
@@ -112,10 +115,12 @@ export function ProjectRoadmapModal({
         name: newStepName.trim(),
         priority: newStepPriority,
         project_id: project.id,
+        is_draft: newStepIsDraft,
       };
       const created = await apiPost<BacklogTaskOut>("/backlog", body);
       setSteps((prev) => (prev ? [...prev, created] : [created]));
       setNewStepName("");
+      setNewStepIsDraft(false);
     } catch (e) {
       setStepsError(e instanceof ApiError ? e.message : "Couldn't add that task.");
     } finally {
@@ -213,6 +218,14 @@ export function ProjectRoadmapModal({
                   >
                     {step.name}
                   </button>
+                  {step.is_draft && (
+                    <span
+                      className="project-roadmap-modal__draft-badge"
+                      title="Not yet released to the Task Pool"
+                    >
+                      Draft
+                    </span>
+                  )}
                   <select
                     className="project-roadmap-modal__step-status"
                     value={step.status}
@@ -254,6 +267,15 @@ export function ProjectRoadmapModal({
                 </option>
               ))}
             </select>
+            <label className="project-roadmap-modal__draft-toggle">
+              <input
+                type="checkbox"
+                checked={newStepIsDraft}
+                onChange={(e) => setNewStepIsDraft(e.target.checked)}
+                disabled={addPending}
+              />
+              Start as draft
+            </label>
             <button type="button" onClick={handleAddStep} disabled={addPending || !newStepName.trim()}>
               Add
             </button>

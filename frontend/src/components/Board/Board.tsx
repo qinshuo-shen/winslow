@@ -33,10 +33,21 @@ import "./Board.css";
 // set up front in one place instead of adding a bare task then separately
 // opening NotesModal afterward just to attach notes/tags.
 //
-// Project filter tabs (fourth same-day follow-up): the tag hierarchy's
-// top-level tags ("PhD core", "Education", ...) double as a filter bar
-// above the columns -- selecting one shows only tasks carrying that
-// project tag or one of its sub-tags; "All" (default) shows everything.
+// Project filter tabs (fourth same-day follow-up, later replaced by the
+// draft-stage redesign below): a filter bar above the columns, one tab per
+// real Project (procrastination_tool.projects), keyed off each task's
+// `project_id` -- selecting one narrows the board to that project's tasks;
+// "All" (default) shows everything, including project-less tasks. (This
+// used to be driven by the tag hierarchy's top-level tags instead of real
+// Projects -- tags remain fully editable elsewhere, just no longer drive
+// this filter.)
+//
+// Draft-stage Roadmap steps: a task added via a Project's Roadmap
+// quick-add can opt into starting as a draft (`is_draft`) instead of
+// landing straight in the Task Pool. Drafts are excluded from the
+// Today/Pool columns entirely and shown in their own "Drafts" section
+// instead, narrowed by the same project tab, with a "Release to Pool"
+// action per card.
 
 interface BoardProps {
   onTasksChanged?: () => void;
@@ -61,11 +72,20 @@ function groupByQuadrant(tasks: BacklogTaskOut[]): Record<string, GroupedColumn>
   return groups;
 }
 
+function groupByDraftQuadrant(drafts: BacklogTaskOut[]): Record<string, BacklogTaskOut[]> {
+  const groups: Record<string, BacklogTaskOut[]> = {};
+  for (const q of PRIORITY_QUADRANTS) groups[q] = [];
+  for (const t of drafts) {
+    (groups[t.priority] ?? (groups[t.priority] = [])).push(t);
+  }
+  return groups;
+}
+
 export function Board({ onTasksChanged, refreshKey }: BoardProps) {
   const [tasks, setTasks] = useState<BacklogTaskOut[] | null>(null);
   const [tagTree, setTagTree] = useState<TagOut[]>([]);
   const [projects, setProjects] = useState<ProjectOut[]>([]);
-  const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [sprintOnly, setSprintOnly] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -108,38 +128,42 @@ export function Board({ onTasksChanged, refreshKey }: BoardProps) {
     [projects],
   );
 
-  const topLevelProjects = useMemo(
-    () => tagTree.filter((t) => t.parent === null).map((t) => t.name).sort(),
-    [tagTree],
+  const projectTabs = useMemo(
+    () => [...projects].sort((a, b) => a.name.localeCompare(b.name)),
+    [projects],
   );
-
-  // A project's own name plus every sub-tag nested under it -- a task
-  // matches this project tab if any of its tags fall in this set.
-  const projectSubtree = useMemo(() => {
-    if (!selectedProject) return null;
-    const names = new Set<string>([selectedProject]);
-    for (const t of tagTree) {
-      if (t.parent === selectedProject) names.add(t.name);
-    }
-    return names;
-  }, [tagTree, selectedProject]);
 
   // Done tasks never appear on the Board -- they're historical record at
   // that point (especially post-Notion-migration, where completed tasks
   // badly outnumber open ones), not something to work from day to day.
   // Nothing is deleted, just excluded from this view; the evaluation
   // report's "tasks completed today" still counts them via completed_at.
+  //
+  // Draft steps are excluded here too (they get their own section below,
+  // not the Today/Pool columns) -- see visibleDrafts.
   const visibleTasks = useMemo(() => {
-    let notDone = (tasks ?? []).filter((t) => t.status !== "completed");
-    if (projectSubtree) {
-      notDone = notDone.filter((t) => t.tags.some((tag) => projectSubtree.has(tag)));
+    let notDone = (tasks ?? []).filter((t) => t.status !== "completed" && !t.is_draft);
+    if (selectedProjectId !== null) {
+      notDone = notDone.filter((t) => t.project_id === selectedProjectId);
     }
     if (sprintOnly) {
       notDone = notDone.filter((t) => t.is_current_week_commitment);
     }
     return notDone;
-  }, [tasks, projectSubtree, sprintOnly]);
+  }, [tasks, selectedProjectId, sprintOnly]);
   const grouped = useMemo(() => groupByQuadrant(visibleTasks), [visibleTasks]);
+
+  // Draft Roadmap steps not yet released to the Task Pool -- narrowed by
+  // the same project tab as Today/Pool, but not by the This Week toggle
+  // (drafts aren't sprint-committed yet).
+  const visibleDrafts = useMemo(() => {
+    let drafts = (tasks ?? []).filter((t) => t.status !== "completed" && t.is_draft);
+    if (selectedProjectId !== null) {
+      drafts = drafts.filter((t) => t.project_id === selectedProjectId);
+    }
+    return drafts;
+  }, [tasks, selectedProjectId]);
+  const groupedDrafts = useMemo(() => groupByDraftQuadrant(visibleDrafts), [visibleDrafts]);
 
   async function patchTask(id: number, body: BacklogTaskUpdateRequest) {
     setPending(true);
@@ -155,6 +179,10 @@ export function Board({ onTasksChanged, refreshKey }: BoardProps) {
     } finally {
       setPending(false);
     }
+  }
+
+  async function handleReleaseDraft(id: number) {
+    await patchTask(id, { is_draft: false });
   }
 
   async function handleDelete(id: number) {
@@ -211,6 +239,44 @@ export function Board({ onTasksChanged, refreshKey }: BoardProps) {
     );
   }
 
+  function renderDraftsSection() {
+    return (
+      <div className="board__drafts-section">
+        <h3 className="board__drafts-header">Drafts</h3>
+        <div className="board__drafts-list">
+          {PRIORITY_QUADRANTS.map((q) => {
+            const items = groupedDrafts[q] ?? [];
+            if (items.length === 0) return null;
+            return (
+              <div key={q} className="board__quadrant">
+                <h4 className={`board__quadrant-title board__quadrant-title--${quadrantClass(q)}`}>
+                  {quadrantLabel(q)}
+                </h4>
+                <ul className="board__quadrant-list">
+                  {items.map((t) => (
+                    <TaskCard
+                      key={t.id}
+                      task={t}
+                      projectName={t.project_id !== null ? projectNameById.get(t.project_id) : undefined}
+                      pending={pending}
+                      onOpenNotes={() => setNotesTask(t)}
+                      onStatusChange={(status: TaskStatus) => patchTask(t.id, { status })}
+                      onPriorityChange={(priority: string) => patchTask(t.id, { priority })}
+                      onToggleToday={() => patchTask(t.id, { is_today: !t.is_today })}
+                      onToggleThisWeek={() => patchTask(t.id, { is_this_week: !t.is_this_week })}
+                      onDelete={() => handleDelete(t.id)}
+                      onRelease={() => handleReleaseDraft(t.id)}
+                    />
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <section className="board" id="board">
       <div className="board__header">
@@ -221,23 +287,23 @@ export function Board({ onTasksChanged, refreshKey }: BoardProps) {
       </div>
 
       <div className="board__project-tabs">
-        {topLevelProjects.length > 0 && (
+        {projectTabs.length > 0 && (
           <>
             <button
               type="button"
-              className={`board__project-tab ${selectedProject === null ? "board__project-tab--active" : ""}`}
-              onClick={() => setSelectedProject(null)}
+              className={`board__project-tab ${selectedProjectId === null ? "board__project-tab--active" : ""}`}
+              onClick={() => setSelectedProjectId(null)}
             >
               All
             </button>
-            {topLevelProjects.map((p) => (
+            {projectTabs.map((p) => (
               <button
-                key={p}
+                key={p.id}
                 type="button"
-                className={`board__project-tab ${selectedProject === p ? "board__project-tab--active" : ""}`}
-                onClick={() => setSelectedProject(p)}
+                className={`board__project-tab ${selectedProjectId === p.id ? "board__project-tab--active" : ""}`}
+                onClick={() => setSelectedProjectId(p.id)}
               >
-                {p}
+                {p.name}
               </button>
             ))}
           </>
@@ -254,6 +320,8 @@ export function Board({ onTasksChanged, refreshKey }: BoardProps) {
       {error && <p className="board__error">{error}</p>}
 
       {tasks === null && !error && <p className="board__loading">Loading…</p>}
+
+      {tasks !== null && visibleDrafts.length > 0 && renderDraftsSection()}
 
       {tasks !== null && (
         <div className="board__columns">

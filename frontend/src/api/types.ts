@@ -229,6 +229,9 @@ export interface BacklogTaskOut {
   // 2026-08 page-split redesign: optional link to a Project (ProjectOut
   // below) this task is a breakdown step of.
   project_id: number | null;
+  // Draft-stage Roadmap breakdown steps: true until explicitly released to
+  // the Task Pool (PATCH is_draft: false).
+  is_draft: boolean;
 }
 
 export interface BacklogTodayStatusOut {
@@ -243,6 +246,7 @@ export interface BacklogTaskCreateRequest {
   specific_project?: string | null;
   tags?: string[];
   project_id?: number | null;
+  is_draft?: boolean;
 }
 
 // Board (2026-08-11 redesign, same-day follow-up): PATCH /api/backlog/{id}
@@ -262,6 +266,7 @@ export interface BacklogTaskUpdateRequest {
   tags?: string[];
   is_this_week?: boolean;
   project_id?: number;
+  is_draft?: boolean;
 }
 
 // Fourth same-day follow-up: two-level tag hierarchy (Project / sub-project).

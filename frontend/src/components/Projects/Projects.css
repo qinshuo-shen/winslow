@@ -143,10 +143,41 @@
   color: var(--text);
 }
 
+/* Same amber tone as the Board's draft badge (board-card__draft-badge) --
+   flags a step still waiting on the user's release action, not a passive
+   status. */
+.project-roadmap-modal__draft-badge {
+  flex: 0 0 auto;
+  font-size: 0.7rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(245, 124, 0, 0.16);
+  color: #b45309;
+  border: 1px solid rgba(245, 124, 0, 0.32);
+}
+
+@media (prefers-color-scheme: dark) {
+  .project-roadmap-modal__draft-badge {
+    background: rgba(255, 183, 77, 0.2);
+    color: #ffb74d;
+    border-color: rgba(255, 183, 77, 0.38);
+  }
+}
+
 .project-roadmap-modal__quick-add {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.4rem;
+}
+
+.project-roadmap-modal__draft-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--text);
+  white-space: nowrap;
 }
 
 .project-roadmap-modal__quick-add input[type="text"] {

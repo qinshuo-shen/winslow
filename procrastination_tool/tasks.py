@@ -123,6 +123,15 @@ _NEW_COLUMNS = {
     # turns PRAGMA foreign_keys on) -- cleared explicitly by
     # projects.delete_project() rather than relying on a real FK cascade.
     "project_id": "INTEGER REFERENCES projects(id)",
+    # Draft-stage breakdown steps: a Roadmap quick-add step can opt into
+    # starting as a draft (checkbox at add time) instead of landing
+    # straight in the Task Pool -- same manual-boolean-gate shape as
+    # is_today/is_this_week above, kept independent of `status` since
+    # "not yet released to the pool" is an unrelated axis from
+    # not-started/in-progress/on-hold/completed. DEFAULT 0 so existing
+    # rows and any caller that omits it keep today's "instantly in the
+    # pool" behavior.
+    "is_draft": "INTEGER NOT NULL DEFAULT 0",
 }
 
 
@@ -163,6 +172,7 @@ class Task:
     is_this_week: bool = False
     week_committed_date: Optional[str] = None
     project_id: Optional[int] = None
+    is_draft: bool = False
 
 
 def _row_to_task(row: sqlite3.Row, tags: Optional[List[str]] = None) -> Task:
@@ -179,6 +189,7 @@ def _row_to_task(row: sqlite3.Row, tags: Optional[List[str]] = None) -> Task:
         is_this_week=bool(row["is_this_week"]),
         week_committed_date=row["week_committed_date"],
         project_id=row["project_id"],
+        is_draft=bool(row["is_draft"]),
     )
 
 
@@ -299,6 +310,7 @@ def add_task(
     status: str = STATUS_NOT_STARTED,
     tags: Optional[List[str]] = None,
     project_id: Optional[int] = None,
+    is_draft: bool = False,
 ) -> Task:
     """`status` defaults to not-started for normal in-app task creation, but
     is accepted as a parameter so migrate_notion_tasks.py can preserve each
@@ -307,7 +319,11 @@ def add_task(
 
     `project_id` optionally links this task as a breakdown step of a
     projects.py Project -- distinct from `specific_project` (legacy
-    free-text) and `tags` (the generic label system)."""
+    free-text) and `tags` (the generic label system).
+
+    `is_draft` defaults to False so every existing caller (ad hoc task
+    creation, migration) keeps today's "instantly in the Task Pool"
+    behavior; only the Roadmap quick-add's opt-in checkbox passes True."""
     name = name.strip()
     if not name:
         raise ValueError("Task name can't be empty")
@@ -321,10 +337,11 @@ def add_task(
     with closing(_connect()) as conn:
         cur = conn.execute(
             "INSERT INTO tasks (name, priority, effort_minutes, notes, status, created_at, "
-            "specific_project, is_today, position, completed_at, project_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)",
+            "specific_project, is_today, position, completed_at, project_id, is_draft) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)",
             (name, priority, effort_minutes, notes, status, created_at.isoformat(),
-             specific_project, completed_at.isoformat() if completed_at else None, project_id),
+             specific_project, completed_at.isoformat() if completed_at else None, project_id,
+             1 if is_draft else 0),
         )
         task_id = cur.lastrowid
         normalized_tags = _normalize_tags(tags) if tags else []
@@ -336,6 +353,7 @@ def add_task(
         notes=notes, status=status, created_at=created_at,
         specific_project=specific_project, is_today=False, position=0,
         completed_at=completed_at, tags=normalized_tags, project_id=project_id,
+        is_draft=is_draft,
     )
 
 
@@ -417,6 +435,7 @@ def update_task(
     tags: Optional[List[str]] = None,
     is_this_week: Optional[bool] = None,
     project_id: Optional[int] = None,
+    is_draft: Optional[bool] = None,
 ) -> Optional[Task]:
     """Generic partial update for the Board (status/quadrant/today-toggle/
     reorder/notes/tags edits) -- only fields explicitly passed (non-None)
@@ -430,7 +449,9 @@ def update_task(
     _NEW_COLUMNS comment for why). `project_id` follows the same
     "None means leave unchanged" rule -- pass 0 (never a real task/project
     id) to unlink it, since JSON has no way to distinguish "field omitted"
-    from "field sent as null" once it reaches an Optional Python param."""
+    from "field sent as null" once it reaches an Optional Python param.
+    `is_draft` is the Roadmap draft-stage release toggle -- the Board's
+    "Release to Pool" action sends `is_draft=False`."""
     if priority is not None and priority not in PRIORITY_ORDER:
         raise ValueError(f"Unknown priority quadrant: {priority!r}")
     if status is not None and status not in ALL_STATUSES:
@@ -475,6 +496,9 @@ def update_task(
     if project_id is not None:
         fields.append("project_id = ?")
         values.append(project_id if project_id != 0 else None)
+    if is_draft is not None:
+        fields.append("is_draft = ?")
+        values.append(1 if is_draft else 0)
 
     if not fields and tags is None:
         return get_task(task_id)

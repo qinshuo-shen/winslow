@@ -15,6 +15,10 @@ interface TaskCardProps {
   onToggleToday: () => void;
   onToggleThisWeek: () => void;
   onDelete: () => void;
+  // Present only when the task is a draft -- releases it to the Task Pool
+  // (PATCH is_draft: false). Draft cards render this instead of the
+  // Today/Pool toggle, since a draft isn't meaningfully in either column yet.
+  onRelease?: () => void;
 }
 
 export function TaskCard({
@@ -27,6 +31,7 @@ export function TaskCard({
   onToggleToday,
   onToggleThisWeek,
   onDelete,
+  onRelease,
 }: TaskCardProps) {
   return (
     <li className={`board-card board-card--${quadrantClass(task.priority)}`}>
@@ -45,6 +50,12 @@ export function TaskCard({
           ×
         </button>
       </div>
+
+      {task.is_draft && (
+        <span className="board-card__draft-badge" title="Not yet released to the Task Pool">
+          Draft
+        </span>
+      )}
 
       {task.carried_forward && (
         <span className="board-card__carried-forward" title="Still in progress -- carried forward from yesterday">
@@ -105,22 +116,35 @@ export function TaskCard({
             ))}
           </select>
         </div>
-        <button
-          type="button"
-          className="board-card__move"
-          disabled={pending}
-          onClick={onToggleToday}
-        >
-          {task.is_today ? "→ Pool" : "→ Today"}
-        </button>
-        <button
-          type="button"
-          className="board-card__week-toggle"
-          disabled={pending}
-          onClick={onToggleThisWeek}
-        >
-          {task.is_this_week ? "− This Week" : "+ This Week"}
-        </button>
+        {task.is_draft ? (
+          <button
+            type="button"
+            className="board-card__release-btn"
+            disabled={pending}
+            onClick={onRelease}
+          >
+            Release to Pool
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="board-card__move"
+              disabled={pending}
+              onClick={onToggleToday}
+            >
+              {task.is_today ? "→ Pool" : "→ Today"}
+            </button>
+            <button
+              type="button"
+              className="board-card__week-toggle"
+              disabled={pending}
+              onClick={onToggleThisWeek}
+            >
+              {task.is_this_week ? "− This Week" : "+ This Week"}
+            </button>
+          </>
+        )}
       </div>
     </li>
   );
