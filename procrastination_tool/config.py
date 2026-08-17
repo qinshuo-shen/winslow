@@ -177,3 +177,8 @@ SESSION_DB_PATH = DATA_DIR / "sessions.db"
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY") or None
 PM_AGENT_MODEL = os.environ.get("PM_AGENT_MODEL", "claude-opus-5")
 PM_AGENT_MOCK = os.environ.get("PM_AGENT_MOCK") == "1"
+
+# Virtual daily standup (same ANTHROPIC_API_KEY, own model/mock switches so
+# it can be dev-tested independently of PM_AGENT_MOCK -- see standup.py).
+STANDUP_MODEL = os.environ.get("STANDUP_MODEL", "claude-opus-5")
+STANDUP_MOCK = os.environ.get("STANDUP_MOCK") == "1"

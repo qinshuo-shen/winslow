@@ -352,6 +352,16 @@ export interface PMReviewOut {
   suggestions: PMSuggestionOut[];
 }
 
+// Virtual daily standup (Scrum-lite feature set) -- a single AI-generated,
+// strictly forward-looking note. No request-type export: POST /standup/
+// generate takes a plain { blockers } object inline.
+export interface StandupOut {
+  generated_at: string; // datetime
+  model_used: string;
+  note_date: string; // date
+  note: string; // markdown
+}
+
 export type NowStatus = "idle" | "pending_start";
 
 export interface NowOut {

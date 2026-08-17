@@ -1,0 +1,85 @@
+.standup {
+  text-align: left;
+  margin-bottom: 2rem;
+}
+
+.standup__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.standup__header h2 {
+  text-align: left;
+  margin: 0;
+}
+
+.standup__generate {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  white-space: nowrap;
+}
+
+.standup__generate:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.standup__blockers {
+  display: block;
+  width: 100%;
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+  font: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.standup__error {
+  color: #b3261e;
+  font-size: 0.9rem;
+  margin: 0.5rem 0 0;
+}
+
+.standup__meta {
+  margin: 0.6rem 0 0.4rem;
+  font-size: 0.8rem;
+  color: var(--text);
+  opacity: 0.7;
+}
+
+/* Same bordered-card look as the reminder banners/PM-agent cards -- calm,
+   not attention-grabbing. */
+.standup__note {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  font-size: 0.92rem;
+  color: var(--text-h);
+}
+
+.standup__note :first-child {
+  margin-top: 0;
+}
+
+.standup__note :last-child {
+  margin-bottom: 0;
+}
+
+.standup__empty {
+  margin: 0.6rem 0 0;
+  font-size: 0.85rem;
+  color: var(--text);
+  opacity: 0.6;
+}

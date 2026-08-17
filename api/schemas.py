@@ -436,6 +436,17 @@ class PMReviewOut(BaseModel):
     suggestions: List[PMSuggestionOut]
 
 
+class StandupGenerateRequest(BaseModel):
+    blockers: str = ""
+
+
+class StandupOut(BaseModel):
+    generated_at: datetime
+    model_used: str
+    note_date: date
+    note: str
+
+
 class NowOut(BaseModel):
     """GET /api/now's response -- a snapshot of proactive_scheduler's
     persisted nudge state plus the task it refers to, or status="idle" with
