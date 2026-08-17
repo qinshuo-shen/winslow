@@ -1,9 +1,49 @@
+.daily-bar-chart-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+  margin: 1rem 0 1.5rem;
+}
+
+.daily-bar-chart__axis-col {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  height: 140px;
+  gap: 0.35rem;
+}
+
+.daily-bar-chart__axis-track {
+  flex: 1;
+  position: relative;
+  width: 1.6rem;
+}
+
+.daily-bar-chart__axis-tick {
+  position: absolute;
+  right: 0;
+  transform: translateY(50%);
+  font-size: 0.7rem;
+  color: var(--text);
+  opacity: 0.65;
+  white-space: nowrap;
+}
+
+/* Same height as .daily-bar-chart__label below, so the track above lines
+   up exactly with the bar tracks it's meant to scale against. An explicit
+   height rather than relying on an empty element's line-height, which
+   isn't consistent enough across browsers for this to line up reliably. */
+.daily-bar-chart__axis-spacer {
+  display: block;
+  height: 1rem;
+}
+
 .daily-bar-chart {
+  flex: 1;
   display: flex;
   align-items: flex-end;
   gap: 0.5rem;
   height: 140px;
-  margin: 1rem 0 1.5rem;
   padding: 0 0.25rem;
 }
 
