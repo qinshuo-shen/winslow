@@ -91,6 +91,11 @@ export function Board({ onTasksChanged, refreshKey }: BoardProps) {
   const [pending, setPending] = useState(false);
   const [notesTask, setNotesTask] = useState<BacklogTaskOut | null>(null);
   const [showNewTask, setShowNewTask] = useState(false);
+  // Collapsed by default is wrong the first time a draft shows up (nothing
+  // to hide yet), but stays expanded thereafter unless the user collapses
+  // it themselves -- a large draft pool was dragging the page out, per the
+  // user's own report.
+  const [draftsCollapsed, setDraftsCollapsed] = useState(false);
 
   async function refresh() {
     try {
@@ -242,7 +247,18 @@ export function Board({ onTasksChanged, refreshKey }: BoardProps) {
   function renderDraftsSection() {
     return (
       <div className="board__drafts-section">
-        <h3 className="board__drafts-header">Drafts</h3>
+        <button
+          type="button"
+          className="board__drafts-header"
+          onClick={() => setDraftsCollapsed((v) => !v)}
+          aria-expanded={!draftsCollapsed}
+        >
+          <span className={`board__drafts-chevron ${draftsCollapsed ? "board__drafts-chevron--collapsed" : ""}`}>
+            ▾
+          </span>
+          Drafts ({visibleDrafts.length})
+        </button>
+        {!draftsCollapsed && (
         <div className="board__drafts-list">
           {PRIORITY_QUADRANTS.map((q) => {
             const items = groupedDrafts[q] ?? [];
@@ -273,6 +289,7 @@ export function Board({ onTasksChanged, refreshKey }: BoardProps) {
             );
           })}
         </div>
+        )}
       </div>
     );
   }

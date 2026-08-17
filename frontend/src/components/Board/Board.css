@@ -73,9 +73,34 @@
 }
 
 .board__drafts-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
   margin: 0 0 0.6rem;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
   font-size: 1rem;
+  font-weight: 600;
   color: var(--text-h);
+  text-align: left;
+  cursor: pointer;
+}
+
+.board__drafts-header:hover {
+  opacity: 0.85;
+}
+
+.board__drafts-chevron {
+  display: inline-block;
+  transition: transform 0.15s ease;
+  font-size: 0.85em;
+}
+
+.board__drafts-chevron--collapsed {
+  transform: rotate(-90deg);
 }
 
 .board__drafts-list {
