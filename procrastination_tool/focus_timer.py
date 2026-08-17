@@ -46,7 +46,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional, Tuple
 
-from . import notify
+from . import notify, push_notifications
 from .config import FOCUS_SESSION_MINUTES, PAUSE_FAIL_MINUTES, SESSION_DB_PATH
 
 OUTCOME_COMPLETED = "completed"
@@ -297,6 +297,9 @@ def finalize_session(start: datetime, end: datetime, duration_minutes: float,
         notify.send_notification(
             "Focus session complete", f"{actual_minutes:.1f} min", subtitle="Nice work!"
         )
+        push_notifications.send_to_all(
+            "Focus session complete", f"{actual_minutes:.1f} min. Nice work!", tag="focus-session"
+        )
     elif outcome == OUTCOME_FAILED_PAUSE_TIMEOUT:
         print(f"Logged {actual_minutes:.1f} min worked -- paused too long, session failed.")
         notify.send_notification(
@@ -304,9 +307,17 @@ def finalize_session(start: datetime, end: datetime, duration_minutes: float,
             f"Paused over {PAUSE_FAIL_MINUTES:g} min",
             subtitle=f"{actual_minutes:.1f} min logged",
         )
+        push_notifications.send_to_all(
+            "Focus session failed",
+            f"Paused too long. {actual_minutes:.1f} min logged.",
+            tag="focus-session",
+        )
     else:
         print(f"Logged {actual_minutes:.1f} min (incomplete).")
         notify.send_notification("Focus session ended early", f"{actual_minutes:.1f} min logged")
+        push_notifications.send_to_all(
+            "Focus session ended early", f"{actual_minutes:.1f} min logged.", tag="focus-session"
+        )
 
     log_session(start, end, duration_minutes, actual_minutes, outcome, task_label,
                 wheel_result=None, runes_awarded=0, specific_project=specific_project)

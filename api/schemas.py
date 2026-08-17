@@ -222,6 +222,24 @@ class FocusStartRequest(BaseModel):
     hardcore: bool = False
 
 
+# Web Push notifications (see procrastination_tool/push_notifications.py) --
+# lets a focus-session outcome reach the user even with no tab open/focused.
+
+
+class PushSubscriptionKeys(BaseModel):
+    p256dh: str
+    auth: str
+
+
+class PushSubscribeRequest(BaseModel):
+    endpoint: str
+    keys: PushSubscriptionKeys
+
+
+class PushUnsubscribeRequest(BaseModel):
+    endpoint: str
+
+
 # 2026-08-11 redesign: native task backlog (replaces Notion) + the
 # proactive-nudge "Now" surface.
 

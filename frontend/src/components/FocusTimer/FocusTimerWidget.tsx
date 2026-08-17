@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { apiPost, ApiError } from "../../api/client";
 import type { FocusStartRequest, FocusStateOut } from "../../api/types";
 import { useFocusPolling } from "./useFocusPolling";
+import { usePushSubscription } from "./usePushSubscription";
 import "./FocusTimerWidget.css";
 
 // Browser-drivable focus timer (Phase 5) -- the web equivalent of the
@@ -9,8 +10,14 @@ import "./FocusTimerWidget.css";
 // via /api/focus/*. No Streamlit precedent for this section (app.py never
 // had a focus timer at all -- see Phase 5's task description), so this UI
 // is new, not ported. Kept intentionally simple: a duration + free-text
-// label form, live countdown, pause/resume/stop -- no Notion task picker,
-// no sound/animation.
+// label form, live countdown, pause/resume/stop -- no Notion task picker.
+//
+// Web Push notifications (see usePushSubscription.ts, push_notifications.py):
+// a session-end notification is sent server-side (from finalize_session(),
+// reachable with no tab open at all -- see the backend module), so this
+// component's own job is just the one-time opt-in affordance. Separately,
+// a same-tab-only live countdown mirrors into document.title while paused,
+// since that only matters while a tab exists to have a title.
 //
 // 2026-08-07: on a running/paused -> idle-with-result transition (session
 // completed, failed, or stopped), call onSessionEnd (bumps App.tsx's
@@ -52,6 +59,7 @@ export function FocusTimerWidget({ onSessionEnd }: FocusTimerWidgetProps) {
   const [hardcore, setHardcore] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const { state: pushState, subscribe: subscribeToPush } = usePushSubscription();
 
   const prevStatusRef = useRef<FocusStateOut["status"] | null>(null);
   useEffect(() => {
@@ -62,6 +70,26 @@ export function FocusTimerWidget({ onSessionEnd }: FocusTimerWidgetProps) {
     }
     prevStatusRef.current = state.status;
   }, [state, onSessionEnd]);
+
+  // Same-tab-only paused countdown, mirrored into the tab title so it's
+  // visible without switching back to this tab -- the real session-end
+  // notification is server-side push (see usePushSubscription.ts) and
+  // doesn't depend on this. Captured once so it's restored correctly no
+  // matter what document.title happens to be at mount.
+  const originalTitleRef = useRef(document.title);
+  useEffect(() => {
+    if (state?.status === "paused") {
+      document.title = `⏸ ${formatMMSS(state.pause_auto_fail_in_seconds ?? 0)} — Winslow`;
+    } else {
+      document.title = originalTitleRef.current;
+    }
+  }, [state?.status, state?.pause_auto_fail_in_seconds]);
+
+  useEffect(() => {
+    return () => {
+      document.title = originalTitleRef.current;
+    };
+  }, []);
 
   async function runAction(fn: () => Promise<unknown>) {
     setPending(true);
@@ -95,7 +123,22 @@ export function FocusTimerWidget({ onSessionEnd }: FocusTimerWidgetProps) {
 
   return (
     <section className="focus-timer">
-      <h2>Focus timer</h2>
+      <div className="focus-timer__header-row">
+        <h2>Focus timer</h2>
+        {pushState === "not-subscribed" && (
+          <button type="button" className="focus-timer__notify-btn" onClick={subscribeToPush}>
+            🔔 Enable notifications
+          </button>
+        )}
+        {pushState === "subscribed" && (
+          <span className="focus-timer__notify-status">🔔 Notifications on</span>
+        )}
+        {pushState === "denied" && (
+          <span className="focus-timer__notify-status focus-timer__notify-status--denied">
+            🔕 Notifications blocked — enable in browser/site settings
+          </span>
+        )}
+      </div>
 
       {error && <p className="focus-timer__error">{error}</p>}
 

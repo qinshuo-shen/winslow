@@ -182,3 +182,15 @@ PM_AGENT_MOCK = os.environ.get("PM_AGENT_MOCK") == "1"
 # it can be dev-tested independently of PM_AGENT_MOCK -- see standup.py).
 STANDUP_MODEL = os.environ.get("STANDUP_MODEL", "claude-opus-5")
 STANDUP_MOCK = os.environ.get("STANDUP_MOCK") == "1"
+
+# Web Push notifications for the focus timer (see push_notifications.py).
+# The private key file is always data/vapid_private_key.pem -- generated
+# once via scripts/generate_vapid_keys.py, then copied to every other
+# environment (local <-> VPS) that needs to send to the same subscriptions,
+# never regenerated independently per environment (a subscription is bound
+# to the public key it was created with). VAPID_CONTACT defaults to a
+# generic non-PII placeholder since this repo is public -- override via
+# .env (gitignored) with a real contact address if desired.
+VAPID_PRIVATE_KEY_PATH = DATA_DIR / "vapid_private_key.pem"
+VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY") or None
+VAPID_CONTACT = os.environ.get("VAPID_CONTACT", "mailto:admin@example.invalid")

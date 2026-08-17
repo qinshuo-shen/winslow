@@ -25,6 +25,15 @@ api = ["fastapi>=0.115", "uvicorn>=0.30", "pydantic>=2.0"]
 # iteration needs no API key or this dependency at all).
 ai = ["anthropic>=0.40"]
 
+# Web Push notifications for the focus timer (see push_notifications.py) --
+# only that module needs this, lazily imported inside send_to_all(), same
+# pattern as the `ai` extra above. Pinned to 2.1.2, NOT the current PyPI
+# latest (2.4.0): pywebpush >=2.2.0 requires Python >=3.10, and this
+# project's venv is 3.9 (see requires-python above). 2.1.2's webpush()/
+# WebPushException API is verified identical to current -- zero API risk
+# in staying pinned.
+push = ["pywebpush==2.1.2", "py-vapid>=1.7.0"]
+
 [project.scripts]
 focus = "procrastination_tool.focus_cli:main"
 
