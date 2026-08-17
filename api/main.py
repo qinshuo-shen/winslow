@@ -98,7 +98,7 @@ from procrastination_tool import device_lock
 from procrastination_tool.focus_session_manager import manager as focus_manager
 
 from .routers import (
-    backlog, calendar, evaluation, focus, now, pm_agent, projects, push,
+    backlog, calendar, evaluation, focus, now, projects, push,
     retro, sessions, standup, tags,
 )
 
@@ -145,8 +145,11 @@ app.include_router(tags.router, prefix="/api")
 app.include_router(evaluation.router, prefix="/api")
 # Scrum-lite: weekly retro (sprint/velocity feature set).
 app.include_router(retro.router, prefix="/api")
-# Scrum-lite: AI PM-agent (suggest-only backlog review).
-app.include_router(pm_agent.router, prefix="/api")
+# Scrum-lite: AI PM-agent (suggest-only backlog review) -- no longer
+# registered, its job absorbed into the standup Q&A box (see standup.py's
+# module docstring). procrastination_tool/pm_agent.py and
+# api/routers/pm_agent.py are left on disk, unused, same convention as
+# this project's other retired modules (spin_wheel.py, character.py).
 # Web Push notifications for the focus timer.
 app.include_router(push.router, prefix="/api")
 # Scrum-lite: virtual daily standup (forward-looking, on-demand note).

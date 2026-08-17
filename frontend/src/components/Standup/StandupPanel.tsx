@@ -5,15 +5,18 @@ import type { StandupOut } from "../../api/types";
 import "./StandupPanel.css";
 
 // Virtual daily standup (Scrum-lite feature set) -- a deliberate, on-demand
-// paid action, same "no polling, no auto-trigger" philosophy as PMAgentPanel.
-// Structurally simpler than PMAgentPanel, though: a standup note has no
+// paid action, same "no polling, no auto-trigger" philosophy the old
+// PMAgentPanel used. Also absorbed PMAgentPanel's backlog-review job (see
+// standup.py's module docstring) -- the same free-text box now doubles as
+// a general question box, not just a blockers field. Still structurally
+// simpler than PMAgentPanel was, though: a standup response has no
 // suggestion list and no task-mutation path at all, so there's no
 // dismissedIds/applyingId/onTaskApplied here -- just today's note and a
-// blockers field that's consumed by the one generate call, then cleared.
+// question field that's consumed by the one generate call, then cleared.
 
 export function StandupPanel() {
   const [standup, setStandup] = useState<StandupOut | null>(null);
-  const [blockers, setBlockers] = useState("");
+  const [question, setQuestion] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,11 +33,11 @@ export function StandupPanel() {
     setPending(true);
     setError(null);
     try {
-      const result = await apiPost<StandupOut>("/standup/generate", { blockers });
+      const result = await apiPost<StandupOut>("/standup/generate", { question });
       setStandup(result);
       // Clearing this reinforces the "ephemeral, consumed by that one
       // generation" contract visually, not just on the backend.
-      setBlockers("");
+      setQuestion("");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Couldn't generate today's standup.");
     } finally {
@@ -57,10 +60,10 @@ export function StandupPanel() {
       </div>
 
       <textarea
-        className="standup__blockers"
-        placeholder="Anything blocking you today? (optional)"
-        value={blockers}
-        onChange={(e) => setBlockers(e.target.value)}
+        className="standup__question"
+        placeholder="Ask about today, your backlog, or anything blocking you… (optional)"
+        value={question}
+        onChange={(e) => setQuestion(e.target.value)}
         disabled={pending}
         rows={2}
       />
@@ -83,7 +86,7 @@ export function StandupPanel() {
 
       {!standup && !pending && (
         <p className="standup__empty">
-          No standup yet today — add anything blocking you, then start.
+          No standup yet today — optionally ask something, then start.
         </p>
       )}
     </section>

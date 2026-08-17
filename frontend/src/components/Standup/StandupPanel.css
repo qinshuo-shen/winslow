@@ -31,7 +31,7 @@
   cursor: default;
 }
 
-.standup__blockers {
+.standup__question {
   display: block;
   width: 100%;
   margin-top: 0.6rem;

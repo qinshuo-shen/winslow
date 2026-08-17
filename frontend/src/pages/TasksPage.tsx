@@ -1,30 +1,24 @@
-import { useState } from "react";
 import { Board } from "../components/Board/Board";
-import { PMAgentPanel } from "../components/PMAgent/PMAgentPanel";
 import { StandupPanel } from "../components/Standup/StandupPanel";
 
 // 2026-08 page-split redesign (Page 1, "Tasks management and backlog
-// review"). PMAgentPanel reviews and suggests changes to the backlog --
-// exactly what this page is for -- so it lives here, directly below Board,
-// same relative position it had in the old single-stacked App.tsx.
-// boardRefreshKey stays same-page sibling state (both live on /tasks), no
-// cross-route Outlet-context plumbing needed the way Evaluation's
-// moodRefreshKey requires.
+// review"). StandupPanel sits ABOVE Board -- it's the page's opening
+// ritual (an optional question, then a generated forward-looking note or
+// direct answer, no board data read and no task-mutation path).
 //
-// StandupPanel sits ABOVE Board instead -- it's the page's opening ritual
-// (takes blockers input, generates a forward-looking note, no board data
-// read and no task-mutation path), unlike PMAgentPanel, which is a
-// reflective action that reads and mutates board state and belongs after
-// you've already looked at the board.
+// The old PMAgentPanel (a separate "Backlog review" AI feature, suggested
+// changes with an Apply button) has been removed from this page -- its
+// job was absorbed into StandupPanel's own question box instead of
+// keeping two separate AI features (see standup.py's module docstring).
+// procrastination_tool/pm_agent.py, api/routers/pm_agent.py, and
+// PMAgentPanel.tsx are left on disk, unused, same convention as this
+// project's other retired modules.
 
 export function TasksPage() {
-  const [boardRefreshKey, setBoardRefreshKey] = useState(0);
-
   return (
     <>
       <StandupPanel />
-      <Board refreshKey={boardRefreshKey} />
-      <PMAgentPanel onTaskApplied={() => setBoardRefreshKey((k) => k + 1)} />
+      <Board />
     </>
   );
 }

@@ -1,17 +1,25 @@
 """
 Virtual daily standup (Scrum-lite feature set) -- an on-demand, single-shot
-AI-generated note about today's plan: what's open, what's worth focusing
-on, and (if given) a way around anything currently blocking the user.
+AI-generated response: by default a short, forward-looking note about
+today's plan, or -- if the user typed a question into the same box -- a
+direct answer to it. This also absorbed the AI PM-agent's backlog-review
+job (see pm_agent.py, now unregistered but left on disk): rather than a
+second AI feature, one on-demand box now covers both "what's on deck
+today" and "what should I reprioritize" style questions.
 
-Strictly forward-looking by design, not just by prompt instruction: the
-weekly Retro (see evaluation.py's generate_weekly_retro()) is deliberately
-kept at week-granularity because a psychologist consult flagged day-by-day
-comparison as rumination bait for this user. A daily standup sits close to
-that same risk, so this module never imports `evaluation` at all --
-historical/completed-task/mood data is structurally unreachable here, not
-merely unused -- and `daily_standups` has no column to hold blockers text
-in, so "the blockers field is ephemeral" is a schema fact, not a
-convention someone could accidentally violate later.
+Strictly forward-looking by design, not just by prompt instruction, for
+the DEFAULT (no-question) note specifically: the weekly Retro (see
+evaluation.py's generate_weekly_retro()) is deliberately kept at
+week-granularity because a psychologist consult flagged day-by-day
+comparison as rumination bait for this user. This module never imports
+`evaluation` at all -- historical/retro/mood data is structurally
+unreachable here, not merely unused. A user-typed question is a different
+interaction shape, though: the risk was specifically *unprompted* daily
+comparisons, not the user asking on purpose (the same distinction that
+made PM-agent's own on-demand carry-over-risk analysis acceptable) -- see
+_SYSTEM_PROMPT for how the two modes differ. `daily_standups` still has no
+column to hold the question text in, so "the question field is ephemeral"
+stays a schema fact, not a convention someone could accidentally violate.
 
 The `anthropic` package is imported lazily, inside AnthropicStandupClient.
 __init__ only -- same reasoning as pm_agent.py: this module, FakeStandup
@@ -40,6 +48,11 @@ CREATE TABLE IF NOT EXISTS daily_standups (
 CREATE INDEX IF NOT EXISTS idx_daily_standups_note_date ON daily_standups(note_date);
 """
 
+# A single personal user's realistic open-task count is well under this; it
+# exists purely as a hard ceiling on request size, oldest tasks dropped
+# first -- same constant/reasoning as pm_agent.py's own _MAX_BACKLOG_TASKS.
+_MAX_BACKLOG_TASKS = 150
+
 
 def _connect() -> sqlite3.Connection:
     conn = sqlite3.connect(SESSION_DB_PATH)
@@ -66,31 +79,41 @@ class StandupClient(Protocol):
 
 _SYSTEM_PROMPT = """You are a calm, practical planning assistant embedded in \
 Winslow, a personal task-management tool built by its sole user to manage \
-executive dysfunction alongside ADHD, depression, and OCD. You are writing \
-today's standup note: a short, forward-looking message about what's open, \
-what's worth focusing on today, and (if given) how to work around anything \
-currently blocking them.
+executive dysfunction alongside ADHD, depression, and OCD. You're shown \
+today's date and the user's full current open backlog (not just what's \
+pulled into Today), plus an optional question or note they typed for this \
+check-in.
 
-Strict framing rules, followed at all times:
-- This note is about TODAY ONLY. Never mention "yesterday," never describe \
-what was or wasn't completed previously, never make any yesterday-vs-today \
-or before-vs-now comparison, even a neutral one.
-- You have not been given any historical or completed-task data -- only \
-today's currently open tasks. Do not speculate about history or invent it.
+If NO question was given, write a short, forward-looking standup note: \
+what's worth focusing on today, and a single gentle suggested focus. In \
+this default mode specifically:
+- This is about TODAY ONLY. Never mention "yesterday," never describe what \
+was or wasn't completed previously, never make any before/now comparison, \
+even a neutral one.
 - If a task is marked as carried over, describe it only as something \
 currently on the list -- never mention how long it's been open, never use \
 "days" or duration language, never frame it as something previously missed.
+- Keep it short: 2-4 short paragraphs, or a short paragraph plus a brief \
+bulleted list. It should read as one cohesive note, not a data dump.
+
+If a question WAS given, answer it directly and helpfully instead -- this \
+covers backlog-review questions too ("what should I reprioritize," "what's \
+been sitting a while," "what's blocking me and what's a small first step"), \
+not just literal blockers. Since the user is asking on purpose here, not \
+receiving an unprompted comparison, you may reference how long a task has \
+been open (its created_at date, or its carried_forward flag) if that's \
+genuinely relevant to answering the question -- but always describe it \
+neutrally ("this has been on the list a while"), never as a judgment.
+
+Tone rules, followed strictly in both modes:
 - Never use streak language, shame language, or "you still haven't..." \
 framing.
-- Keep the note short: 2-4 short paragraphs, or a short paragraph plus a \
-brief bulleted list. It should read as one cohesive note, not a data dump.
-- If there's a blockers note from the user, acknowledge it briefly and \
-suggest one concrete, low-effort way to work around or start on it -- \
-don't lecture or diagnose.
-- End with a single, gentle suggested focus for today -- one thing, not a \
-checklist of everything.
+- Prefer noticing over judging: "this has been in the pool for a while" \
+beats "you're avoiding this."
+- Don't lecture or diagnose -- one concrete, low-effort suggestion beats a \
+checklist.
 
-Return only the note itself as markdown text."""
+Return only the response itself as markdown text."""
 
 _STANDUP_RESPONSE_SCHEMA = {
     "type": "object",
@@ -130,13 +153,18 @@ class FakeStandupClient:
     doesn't normalize the framing this module is built to avoid."""
 
     def generate_note(self, snapshot: dict) -> str:
-        n = len(snapshot.get("today_tasks", []))
-        blockers = snapshot.get("blockers")
-        blockers_line = f"\n\nNoted blocker: {blockers}" if blockers else ""
+        n = len(snapshot.get("open_backlog", []))
+        question = snapshot.get("question")
+        if question:
+            return (
+                f"(mock) STANDUP_MOCK=1 -- canned answer, no API call made.\n\n"
+                f'You asked: "{question}"\n\n'
+                f"There are {n} open task(s) in your backlog right now."
+            )
         return (
             f"(mock) STANDUP_MOCK=1 -- canned note, no API call made.\n\n"
-            f"You've got {n} task(s) on today's list."
-            f"{blockers_line}\n\nSuggested focus: pick the smallest one and start there."
+            f"You've got {n} open task(s) in your backlog.\n\n"
+            f"Suggested focus: pick the smallest one and start there."
         )
 
 
@@ -157,49 +185,52 @@ def get_client() -> StandupClient:
     return AnthropicStandupClient(api_key=ANTHROPIC_API_KEY, model=STANDUP_MODEL)
 
 
-def build_standup_snapshot(blockers: str) -> dict:
-    """Strictly forward-looking: only today's currently-open tasks, no
-    completed-task data, no daily/weekly history, no mood data, no task
-    notes (privacy, same boundary as pm_agent.build_snapshot). Draft
-    Roadmap steps are excluded -- not yet committed work. `carried_forward`
-    is a bare boolean (today's current state), never a date/duration, so
-    there's nothing here to do "days since" math with even if asked to."""
+def build_standup_snapshot(question: str) -> dict:
+    """The full open backlog (every non-completed, non-draft task, not just
+    today's) -- needed so a question can actually be answered, mirroring
+    pm_agent.build_snapshot()'s own backlog shape and cap. Still no task
+    `notes` (privacy, same boundary as pm_agent), still no import of
+    `evaluation` anywhere in this module -- daily/weekly retro rollups and
+    mood data stay structurally unreachable; only per-task `created_at`/
+    `carried_forward` are newly exposed here, not history in aggregate.
+    See _SYSTEM_PROMPT for why that's an acceptable line to draw."""
     all_tasks = tasks.list_all_tasks()
     today_str = date_cls.today().isoformat()
 
-    today_tasks = [
+    open_tasks = [
         t for t in all_tasks
-        if t.is_today and t.status != tasks.STATUS_COMPLETED and not t.is_draft
+        if t.status != tasks.STATUS_COMPLETED and not t.is_draft
     ]
-    open_backlog_count = sum(
-        1 for t in all_tasks
-        if not t.is_today and t.status != tasks.STATUS_COMPLETED and not t.is_draft
-    )
+    open_tasks.sort(key=lambda t: t.created_at)
+    if len(open_tasks) > _MAX_BACKLOG_TASKS:
+        open_tasks = open_tasks[-_MAX_BACKLOG_TASKS:]
 
     return {
         "today": today_str,
-        "today_tasks": [
+        "open_backlog": [
             {
                 "id": t.id,
                 "name": t.name,
                 "priority": t.priority,
                 "effort_minutes": t.effort_minutes,
+                "is_today": t.is_today,
+                "is_this_week": t.is_this_week,
                 "specific_project": t.specific_project,
                 "tags": t.tags,
+                "created_at": t.created_at.date().isoformat(),
                 "carried_forward": t.carried_forward_date == today_str,
             }
-            for t in today_tasks
+            for t in open_tasks
         ],
-        "open_backlog_count": open_backlog_count,
-        "blockers": blockers,
+        "question": question,
     }
 
 
-def generate_standup(client: StandupClient, blockers: str = "") -> StandupNote:
+def generate_standup(client: StandupClient, question: str = "") -> StandupNote:
     """Builds the snapshot, calls the client, persists ONLY the resulting
-    note (never `blockers` -- see the module docstring for why there's no
+    note (never `question` -- see the module docstring for why there's no
     column for it at all), keyed by today's note_date."""
-    snapshot = build_standup_snapshot(blockers)
+    snapshot = build_standup_snapshot(question)
     note_text = client.generate_note(snapshot)
     generated_at = datetime.now()
     note_date = date_cls.today()

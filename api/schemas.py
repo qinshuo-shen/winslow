@@ -455,7 +455,7 @@ class PMReviewOut(BaseModel):
 
 
 class StandupGenerateRequest(BaseModel):
-    blockers: str = ""
+    question: str = ""
 
 
 class StandupOut(BaseModel):

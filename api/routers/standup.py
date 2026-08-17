@@ -31,7 +31,7 @@ def generate(body: StandupGenerateRequest) -> StandupOut:
     # pm_agent.py's router does this -- see that module's comment.
     try:
         client = standup.get_client()
-        result = standup.generate_standup(client, blockers=body.blockers)
+        result = standup.generate_standup(client, question=body.question)
     except standup.StandupNotConfiguredError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return _build_standup_out(result)
