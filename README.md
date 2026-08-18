@@ -98,6 +98,14 @@ To add a further account later (or if you skipped the prompt above):
 .venv/bin/python3 scripts/create_user.py
 ```
 
+**If someone forgets their password**, in-app "Change password" (top-right corner once logged in) only works if they still remember the current one. For a real lockout, only you can fix it -- the login page tells them to ask you; run this and give them the new one over a channel you trust:
+
+```bash
+.venv/bin/python3 scripts/reset_password.py
+```
+
+It logs every device that account was signed into out, so the first thing they should do once they're back in is set their own password again via "Change password" -- same as right after their account was first created.
+
 **Sharing your Tailscale node with the friend**, rather than exposing the app publicly (keeps this app's existing no-domain/no-TLS-management posture): in the [Tailscale admin console](https://login.tailscale.com/admin/machines), either (a) use "Share" on the `winslow-vps` node to invite their account to just that one device (they install the Tailscale app, accept the invite, and can reach `https://winslow-vps.<tailnet>.ts.net` without joining your whole tailnet or seeing your other devices), or (b) if you'd rather they be a full member of your tailnet, invite them as a user and write an ACL restricting their device to only the Winslow VPS's port 8000/443. Once connected, she opens the same `https://winslow-vps.<tailnet>.ts.net` URL (Windows: install Tailscale for Windows, then open the URL in any browser) and logs in with the account you created for her above.
 
 ## Running independently on two Macs, data synced via Syncthing (superseded 2026-08-12, kept for reference)

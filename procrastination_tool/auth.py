@@ -3,14 +3,24 @@ Real per-user accounts (multi-user follow-up) -- exactly 2 users expected
 (the app owner + one friend), so this is deliberately minimal: username +
 password, hashed with bcrypt, backed by an opaque server-side session
 token in a cookie. No self-serve signup (see scripts/create_user.py) and
-no email-based password *reset* at all -- this project has already tried
-and removed an email integration once (see README's Gmail history) and
-there's no reason to reintroduce that dependency just for account recovery
-on a 2-person app. Changing a password you still remember, while logged
-in, is a different thing (see change_password() below) -- deliberately
-supported so the app owner is never the one setting or knowing the
-friend's password past initial account creation, matching the "private
-from the owner too" goal the multi-user work exists for.
+no email-based recovery flow at all -- this project has already tried and
+removed an email integration once (see README's Gmail history) and
+there's no reason to reintroduce that dependency for a 2-person app.
+
+Two different password-change paths, deliberately kept separate:
+- change_password() -- self-service, requires the CURRENT password. Used
+  from inside the app by someone who still remembers their password, so
+  the app owner is never the one setting or knowing it past initial
+  account creation (matches the "private from the owner too" goal the
+  multi-user work exists for).
+- set_password() -- admin reset, no current-password check at all. The
+  "forgot password" path: only the app owner can run it (shell access to
+  the box, see scripts/reset_password.py), for someone who's locked out
+  and can't prove they know the old one. This does put a temporary
+  password back in the owner's hands briefly -- same trust boundary as
+  the owner creating the account in the first place -- but the person
+  changes it themselves via change_password() the moment they're back in,
+  same as any real "admin resets it, you pick a real one next" flow.
 
 Deliberately framework-agnostic (no FastAPI/Request/HTTPException import
 here) -- api/deps.py is the one place allowed to know about the HTTP layer,
@@ -213,4 +223,25 @@ def change_password(
             )
         else:
             conn.execute("DELETE FROM auth_sessions WHERE user_id = ?", (user_id,))
+        conn.commit()
+
+
+def set_password(user_id: int, new_password: str) -> None:
+    """Unconditional admin-level reset -- no current-password check, unlike
+    change_password() above. This is the "forgot password" path (see
+    scripts/reset_password.py): the person asking for it can't prove they
+    know the old password, that's the whole reason they need this instead
+    of change_password(). Always revokes every existing session for the
+    account -- there's no keep_token here, since this isn't run from an
+    active session belonging to the account being reset in the first
+    place."""
+    if not new_password:
+        raise ValueError("New password can't be empty")
+    with closing(_connect()) as conn:
+        row = conn.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
+        if row is None:
+            raise ValueError("No such user")
+        new_hash = bcrypt.hashpw(new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+        conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, user_id))
+        conn.execute("DELETE FROM auth_sessions WHERE user_id = ?", (user_id,))
         conn.commit()

@@ -4,9 +4,11 @@ import { ApiError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import "./LoginPage.css";
 
-// Multi-user follow-up: plain username/password, no "forgot password" --
-// there's no self-serve signup either (see scripts/create_user.py), so
-// there's no account to recover here that a support flow would help with.
+// Multi-user follow-up: plain username/password. No self-serve "forgot
+// password" flow -- with no email integration (deliberately, see
+// procrastination_tool/auth.py's docstring), there's no channel to send a
+// reset link through anyway. The hint below just points at the real
+// recovery path: the account owner running scripts/reset_password.py.
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -61,6 +63,9 @@ export function LoginPage() {
         <button type="submit" disabled={submitting}>
           {submitting ? "Signing in..." : "Sign in"}
         </button>
+        <p className="login-page__hint">
+          Forgot your password? Ask whoever set up your account to reset it for you.
+        </p>
       </form>
     </div>
   );
