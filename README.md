@@ -73,12 +73,32 @@ sudo systemctl daemon-reload && sudo systemctl enable --now winslow
 sudo tailscale serve --bg 8000
 ```
 
-- **No auth code, no domain, no TLS cert management.** This app has zero authentication anywhere in it, so rather than bolt on Basic Auth + a public domain + a reverse proxy, access is Tailscale-only: uvicorn binds `127.0.0.1:8000` only, and `tailscale serve` proxies that to a private `https://winslow-vps.<tailnet>.ts.net` HTTPS endpoint reachable only by devices logged into the same tailnet. Install the Tailscale app on iPhone, MacBook, and Mac mini and log into the same tailnet; enable MagicDNS in the admin console so the hostname resolves everywhere.
+- **No domain, no TLS cert management.** Rather than a public domain + reverse proxy, access is Tailscale-only: uvicorn binds `127.0.0.1:8000` only, and `tailscale serve` proxies that to a private `https://winslow-vps.<tailnet>.ts.net` HTTPS endpoint reachable only by devices logged into the same tailnet. Install the Tailscale app on iPhone, MacBook, and Mac mini and log into the same tailnet; enable MagicDNS in the admin console so the hostname resolves everywhere. (2026-08-18 multi-user follow-up: the app now has real accounts/login -- see "Adding a second user" below -- but network access is still Tailscale-only rather than a public domain, so this bullet's *shape* is unchanged even though its "zero authentication anywhere" premise no longer holds.)
 - **iPhone**: open the `https://winslow-vps.<tailnet>.ts.net` URL in Safari, then Share → "Add to Home Screen" for an app-like icon and full-screen launch (no browser chrome) — `frontend/index.html`'s manifest link and `apple-mobile-web-app-capable` meta tag make this work.
 - **Data**: copy the authoritative `data/sessions.db` (from whichever Mac had it) to `/opt/winslow/app/data/sessions.db` on the VPS once, over Tailscale (`scp`). If `device_lock.py` refuses to start because of a stale lock row inherited from the old Mac hostname, that's expected — do one transient `sudo systemctl set-environment PROCRASTINATION_TOOL_FORCE_UNLOCK=1 && sudo systemctl restart winslow`, confirm it's healthy, then `sudo systemctl unset-environment PROCRASTINATION_TOOL_FORCE_UNLOCK` (never leave it set standing).
 - **Backups**: `deploy/backup_db.sh` runs nightly via cron (`sudo crontab -u winslow -e`: `0 3 * * * /opt/winslow/app/deploy/backup_db.sh`) doing a safe SQLite `.backup` into `/opt/winslow/backups/`, pruned after 30 days. The Mac mini pulls a copy off the VPS nightly too (`rsync -az winslow@winslow-vps:/opt/winslow/backups/ ~/winslow-backups/`) so a copy exists off the VPS as well.
 - **Logs**: `journalctl -u winslow -f` (systemd's equivalent of the old launchd plist's `StandardOutPath`/`StandardErrorPath`).
 - The old per-Mac `data/` directories and the Syncthing folder pairing between the two Macs are retired but kept (not deleted) for a rollback window — see the sections below for what they looked like.
+
+## Adding a second user (2026-08-18 multi-user follow-up)
+
+The app now has real accounts (username + password, hashed with bcrypt, a server-side session cookie) instead of zero authentication -- every task/project/focus-session/evaluation/standup/push-subscription table is scoped by `user_id`, so one account can never read another's data through the API. **Caveat, not solved here**: this is still one shared SQLite file on the VPS you administer -- the login stops account A reading account B's rows through the app, it can't stop someone with filesystem/root access to the box from reading `data/sessions.db` directly. If that matters, that's a separate (harder) problem -- per-user encryption at rest -- not attempted by this change.
+
+**One-time migration, against the real, already-populated `data/sessions.db`** (do this on a scratch copy first if you want to see it run before touching the real file -- point `procrastination_tool.config.SESSION_DB_PATH` at a copy):
+
+```bash
+.venv/bin/python3 scripts/bootstrap_multiuser.py
+```
+
+This backs up `data/sessions.db` (a `.pre-migration-backup` copy next to it, once), walks you through creating the owner account (your existing historical data backfills to it) and optionally a second account right there, and rebuilds the handful of tables whose old schema couldn't just get an `ALTER TABLE ADD COLUMN` (`tags`, `today_rollover`/`week_rollover`, `daily_evaluations`, `weekly_retros` -- see the script's own comments for why each needed a real rebuild vs. a simple column add). Safe to re-run -- every step no-ops once already applied.
+
+To add a further account later (or if you skipped the prompt above):
+
+```bash
+.venv/bin/python3 scripts/create_user.py
+```
+
+**Sharing your Tailscale node with the friend**, rather than exposing the app publicly (keeps this app's existing no-domain/no-TLS-management posture): in the [Tailscale admin console](https://login.tailscale.com/admin/machines), either (a) use "Share" on the `winslow-vps` node to invite their account to just that one device (they install the Tailscale app, accept the invite, and can reach `https://winslow-vps.<tailnet>.ts.net` without joining your whole tailnet or seeing your other devices), or (b) if you'd rather they be a full member of your tailnet, invite them as a user and write an ACL restricting their device to only the Winslow VPS's port 8000/443. Once connected, she opens the same `https://winslow-vps.<tailnet>.ts.net` URL (Windows: install Tailscale for Windows, then open the URL in any browser) and logs in with the account you created for her above.
 
 ## Running independently on two Macs, data synced via Syncthing (superseded 2026-08-12, kept for reference)
 

@@ -23,10 +23,11 @@ GET  /api/mood                -- that day's mood entries (today if no
 from datetime import date as date_cls
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from procrastination_tool import evaluation
+from procrastination_tool import auth, evaluation
 
+from ..deps import get_current_user
 from ..schemas import (
     DailyEvaluationOut,
     EvaluationGenerateRequest,
@@ -51,44 +52,55 @@ def _build_evaluation_out(e: "evaluation.DailyEvaluation") -> DailyEvaluationOut
 
 
 @router.post("/evaluation/generate", response_model=DailyEvaluationOut)
-def generate_evaluation(body: EvaluationGenerateRequest) -> DailyEvaluationOut:
-    result = evaluation.generate_daily_evaluation(body.date)
+def generate_evaluation(
+    body: EvaluationGenerateRequest, user: auth.User = Depends(get_current_user)
+) -> DailyEvaluationOut:
+    result = evaluation.generate_daily_evaluation(user.id, body.date)
     return _build_evaluation_out(result)
 
 
 @router.get("/evaluation/history", response_model=List[DailyEvaluationOut])
-def get_evaluation_history(days: int = Query(7, ge=1, le=90)) -> List[DailyEvaluationOut]:
-    return [_build_evaluation_out(e) for e in evaluation.list_evaluations(days)]
+def get_evaluation_history(
+    days: int = Query(7, ge=1, le=90), user: auth.User = Depends(get_current_user)
+) -> List[DailyEvaluationOut]:
+    return [_build_evaluation_out(e) for e in evaluation.list_evaluations(user.id, days)]
 
 
 @router.get("/evaluation/today-status", response_model=EvaluationTodayStatusOut)
-def get_today_status() -> EvaluationTodayStatusOut:
+def get_today_status(user: auth.User = Depends(get_current_user)) -> EvaluationTodayStatusOut:
     today = date_cls.today()
     return EvaluationTodayStatusOut(
         date=today,
-        mood_logged=bool(evaluation.list_mood_entries(today)),
-        evaluation_generated=evaluation.get_evaluation(today) is not None,
+        mood_logged=bool(evaluation.list_mood_entries(user.id, today)),
+        evaluation_generated=evaluation.get_evaluation(user.id, today) is not None,
     )
 
 
 @router.get("/evaluation/{eval_date}", response_model=DailyEvaluationOut)
-def get_evaluation(eval_date: date_cls) -> DailyEvaluationOut:
-    result = evaluation.get_evaluation(eval_date)
+def get_evaluation(
+    eval_date: date_cls, user: auth.User = Depends(get_current_user)
+) -> DailyEvaluationOut:
+    result = evaluation.get_evaluation(user.id, eval_date)
     if result is None:
         raise HTTPException(status_code=404, detail=f"No evaluation generated for {eval_date}")
     return _build_evaluation_out(result)
 
 
 @router.post("/mood", response_model=MoodEntryOut)
-def create_mood_entry(body: MoodCreateRequest) -> MoodEntryOut:
+def create_mood_entry(
+    body: MoodCreateRequest, user: auth.User = Depends(get_current_user)
+) -> MoodEntryOut:
     try:
-        entry = evaluation.log_mood(body.mood_score, body.note)
+        entry = evaluation.log_mood(user.id, body.mood_score, body.note)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return MoodEntryOut(**vars(entry))
 
 
 @router.get("/mood", response_model=List[MoodEntryOut])
-def list_mood_entries(mood_date: Optional[date_cls] = Query(None, alias="date")) -> List[MoodEntryOut]:
-    entries = evaluation.list_mood_entries(mood_date or date_cls.today())
+def list_mood_entries(
+    mood_date: Optional[date_cls] = Query(None, alias="date"),
+    user: auth.User = Depends(get_current_user),
+) -> List[MoodEntryOut]:
+    entries = evaluation.list_mood_entries(user.id, mood_date or date_cls.today())
     return [MoodEntryOut(**vars(m)) for m in entries]

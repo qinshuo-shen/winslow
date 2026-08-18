@@ -46,7 +46,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional, Tuple
 
-from . import notify, push_notifications
+from . import auth, notify, push_notifications
 from .config import FOCUS_SESSION_MINUTES, PAUSE_FAIL_MINUTES, SESSION_DB_PATH
 
 OUTCOME_COMPLETED = "completed"
@@ -56,6 +56,7 @@ OUTCOME_FAILED_PAUSE_TIMEOUT = "failed_pause_timeout"
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
     start_time TEXT NOT NULL,
     end_time TEXT NOT NULL,
     planned_minutes REAL NOT NULL,
@@ -79,6 +80,7 @@ class SessionResult:
 @dataclass
 class SessionRow:
     id: int
+    user_id: int
     start_time: datetime
     end_time: datetime
     planned_minutes: float
@@ -96,10 +98,15 @@ def _connect() -> sqlite3.Connection:
     conn.execute(_SCHEMA)
     # sqlite has no ADD COLUMN IF NOT EXISTS -- guarded ALTER TABLE is this
     # project's established lazy-migration pattern (see `outcome` below).
+    # `user_id` is nullable here for the same reason tasks.py's is:
+    # ALTER TABLE can't add NOT NULL with no default to a table that
+    # already has rows -- scripts/bootstrap_multiuser.py backfills
+    # existing NULL rows to the owner's account.
     for column_sql in (
         "ALTER TABLE sessions ADD COLUMN outcome TEXT",
         "ALTER TABLE sessions ADD COLUMN runes_awarded INTEGER",
         "ALTER TABLE sessions ADD COLUMN specific_project TEXT",
+        "ALTER TABLE sessions ADD COLUMN user_id INTEGER",
     ):
         try:
             conn.execute(column_sql)
@@ -108,30 +115,32 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
-def log_session(start: datetime, end: datetime, planned_minutes: float, actual_minutes: float,
-                 outcome: str, task_label: Optional[str], wheel_result: Optional[str],
-                 runes_awarded: int = 0, specific_project: Optional[str] = None) -> None:
+def log_session(user_id: int, start: datetime, end: datetime, planned_minutes: float,
+                 actual_minutes: float, outcome: str, task_label: Optional[str],
+                 wheel_result: Optional[str], runes_awarded: int = 0,
+                 specific_project: Optional[str] = None) -> None:
     with closing(_connect()) as conn:
         conn.execute(
-            "INSERT INTO sessions (start_time, end_time, planned_minutes, actual_minutes, "
-            "completed, task_label, wheel_result, outcome, runes_awarded, specific_project) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (start.isoformat(), end.isoformat(), planned_minutes, actual_minutes,
+            "INSERT INTO sessions (user_id, start_time, end_time, planned_minutes, "
+            "actual_minutes, completed, task_label, wheel_result, outcome, runes_awarded, "
+            "specific_project) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (user_id, start.isoformat(), end.isoformat(), planned_minutes, actual_minutes,
              int(outcome == OUTCOME_COMPLETED), task_label, wheel_result, outcome,
              runes_awarded, specific_project),
         )
         conn.commit()
 
 
-def get_recent_sessions(limit: int = 10) -> List[SessionRow]:
+def get_recent_sessions(user_id: int, limit: int = 10) -> List[SessionRow]:
     with closing(_connect()) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
-            "SELECT * FROM sessions ORDER BY id DESC LIMIT ?", (limit,)
+            "SELECT * FROM sessions WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+            (user_id, limit),
         ).fetchall()
     return [
         SessionRow(
-            id=r["id"], start_time=datetime.fromisoformat(r["start_time"]),
+            id=r["id"], user_id=r["user_id"], start_time=datetime.fromisoformat(r["start_time"]),
             end_time=datetime.fromisoformat(r["end_time"]), planned_minutes=r["planned_minutes"],
             actual_minutes=r["actual_minutes"], completed=bool(r["completed"]),
             task_label=r["task_label"], wheel_result=r["wheel_result"],
@@ -249,7 +258,19 @@ def run_focus_session(duration_minutes: float = FOCUS_SESSION_MINUTES,
     (see focus_cli.py's `focus start --pick`, notion_tasks.Task) when
     available. A free-text `--task` label with no linked task leaves both
     None.
+
+    Multi-user follow-up: the CLI has no HTTP session/cookie to read a
+    user_id from, and only the app owner ever has shell access to the box
+    anyway (the friend is a Tailscale-only web client) -- so this always
+    resolves to whichever account was created first (auth.get_owner_user()),
+    not something callers choose.
     """
+    owner = auth.get_owner_user()
+    if owner is None:
+        raise RuntimeError(
+            "No account exists yet -- run scripts/create_user.py first "
+            "(the `focus` CLI always runs as the first account created)."
+        )
     start = datetime.now()
     label_suffix = f" on {task_label!r}" if task_label else ""
 
@@ -263,11 +284,11 @@ def run_focus_session(duration_minutes: float = FOCUS_SESSION_MINUTES,
         outcome, worked_seconds = _run_noninteractive(duration_minutes)
 
     end = datetime.now()
-    return finalize_session(start, end, duration_minutes, worked_seconds, outcome,
+    return finalize_session(owner.id, start, end, duration_minutes, worked_seconds, outcome,
                              task_label, priority, specific_project)
 
 
-def finalize_session(start: datetime, end: datetime, duration_minutes: float,
+def finalize_session(user_id: int, start: datetime, end: datetime, duration_minutes: float,
                       worked_seconds: float, outcome: str, task_label: Optional[str],
                       priority: Optional[str], specific_project: Optional[str]) -> SessionResult:
     """
@@ -297,8 +318,9 @@ def finalize_session(start: datetime, end: datetime, duration_minutes: float,
         notify.send_notification(
             "Focus session complete", f"{actual_minutes:.1f} min", subtitle="Nice work!"
         )
-        push_notifications.send_to_all(
-            "Focus session complete", f"{actual_minutes:.1f} min. Nice work!", tag="focus-session"
+        push_notifications.send_to_user(
+            user_id, "Focus session complete", f"{actual_minutes:.1f} min. Nice work!",
+            tag="focus-session",
         )
     elif outcome == OUTCOME_FAILED_PAUSE_TIMEOUT:
         print(f"Logged {actual_minutes:.1f} min worked -- paused too long, session failed.")
@@ -307,19 +329,20 @@ def finalize_session(start: datetime, end: datetime, duration_minutes: float,
             f"Paused over {PAUSE_FAIL_MINUTES:g} min",
             subtitle=f"{actual_minutes:.1f} min logged",
         )
-        push_notifications.send_to_all(
-            "Focus session failed",
+        push_notifications.send_to_user(
+            user_id, "Focus session failed",
             f"Paused too long. {actual_minutes:.1f} min logged.",
             tag="focus-session",
         )
     else:
         print(f"Logged {actual_minutes:.1f} min (incomplete).")
         notify.send_notification("Focus session ended early", f"{actual_minutes:.1f} min logged")
-        push_notifications.send_to_all(
-            "Focus session ended early", f"{actual_minutes:.1f} min logged.", tag="focus-session"
+        push_notifications.send_to_user(
+            user_id, "Focus session ended early", f"{actual_minutes:.1f} min logged.",
+            tag="focus-session",
         )
 
-    log_session(start, end, duration_minutes, actual_minutes, outcome, task_label,
+    log_session(user_id, start, end, duration_minutes, actual_minutes, outcome, task_label,
                 wheel_result=None, runes_awarded=0, specific_project=specific_project)
     return SessionResult(completed=(outcome == OUTCOME_COMPLETED), actual_minutes=actual_minutes,
                           wheel_result=None, outcome=outcome, runes_awarded=0)

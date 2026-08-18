@@ -1,9 +1,12 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import type { ReactNode } from "react";
 import { Layout } from "./components/Layout/Layout";
 import { ProjectBoard } from "./components/Projects/ProjectBoard";
 import { TasksPage } from "./pages/TasksPage";
 import { FocusPage } from "./pages/FocusPage";
 import { EvaluationPage } from "./pages/EvaluationPage";
+import { LoginPage } from "./pages/LoginPage";
+import { AuthProvider, useAuth } from "./auth/AuthContext";
 
 // 2026-08-11 redesign, same-day follow-up: replaces the old multi-panel
 // "dashboard you visit" (Today's schedule, the manual drag-and-drop
@@ -53,18 +56,43 @@ import { EvaluationPage } from "./pages/EvaluationPage";
 // what Page 1 is for; Retro moved into EvaluationPage.tsx alongside
 // Evaluation, the "weekly" half of Page 4's stated purpose.
 
+// Multi-user follow-up: gates the whole routed-page group behind a
+// logged-in session -- AuthContext's one-time GET /api/auth/me on mount
+// is what `loading` reflects here, so an unauthenticated visitor sees
+// nothing flash before landing on /login, and everyone else falls through
+// to the real pages below unchanged.
+function RequireAuth({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) return null;
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+  return <>{children}</>;
+}
+
 function App() {
   return (
-    <Routes>
-      <Route element={<Layout />}>
-        <Route index element={<Navigate to="/tasks" replace />} />
-        <Route path="/tasks" element={<TasksPage />} />
-        <Route path="/projects" element={<ProjectBoard />} />
-        <Route path="/focus" element={<FocusPage />} />
-        <Route path="/evaluation" element={<EvaluationPage />} />
-        <Route path="*" element={<Navigate to="/tasks" replace />} />
-      </Route>
-    </Routes>
+    <AuthProvider>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          element={
+            <RequireAuth>
+              <Layout />
+            </RequireAuth>
+          }
+        >
+          <Route index element={<Navigate to="/tasks" replace />} />
+          <Route path="/tasks" element={<TasksPage />} />
+          <Route path="/projects" element={<ProjectBoard />} />
+          <Route path="/focus" element={<FocusPage />} />
+          <Route path="/evaluation" element={<EvaluationPage />} />
+          <Route path="*" element={<Navigate to="/tasks" replace />} />
+        </Route>
+      </Routes>
+    </AuthProvider>
   );
 }
 

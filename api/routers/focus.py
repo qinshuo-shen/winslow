@@ -17,11 +17,12 @@ since it's specifically a state-conflict).
 """
 import time
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
-from procrastination_tool import focus_session_manager
+from procrastination_tool import auth, focus_session_manager
 from procrastination_tool.focus_session_manager import FocusSessionState, manager
 
+from ..deps import get_current_user
 from ..schemas import FocusStartRequest, FocusStateOut, SessionResultOut
 
 router = APIRouter(prefix="/focus", tags=["focus"])
@@ -62,15 +63,18 @@ def _build_focus_state_out(state: FocusSessionState) -> FocusStateOut:
 
 
 @router.get("/state", response_model=FocusStateOut)
-def get_focus_state() -> FocusStateOut:
-    manager.tick()
-    return _build_focus_state_out(manager.snapshot())
+def get_focus_state(user: auth.User = Depends(get_current_user)) -> FocusStateOut:
+    manager.tick(user.id)
+    return _build_focus_state_out(manager.snapshot(user.id))
 
 
 @router.post("/start", response_model=FocusStateOut)
-def start_focus_session(body: FocusStartRequest) -> FocusStateOut:
+def start_focus_session(
+    body: FocusStartRequest, user: auth.User = Depends(get_current_user)
+) -> FocusStateOut:
     try:
         state = manager.start(
+            user_id=user.id,
             duration_minutes=body.duration_minutes,
             task_label=body.task_label,
             priority=body.priority,
@@ -83,27 +87,27 @@ def start_focus_session(body: FocusStartRequest) -> FocusStateOut:
 
 
 @router.post("/pause", response_model=FocusStateOut)
-def pause_focus_session() -> FocusStateOut:
+def pause_focus_session(user: auth.User = Depends(get_current_user)) -> FocusStateOut:
     try:
-        state = manager.pause()
+        state = manager.pause(user.id)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
     return _build_focus_state_out(state)
 
 
 @router.post("/resume", response_model=FocusStateOut)
-def resume_focus_session() -> FocusStateOut:
+def resume_focus_session(user: auth.User = Depends(get_current_user)) -> FocusStateOut:
     try:
-        state = manager.resume()
+        state = manager.resume(user.id)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
     return _build_focus_state_out(state)
 
 
 @router.post("/stop", response_model=FocusStateOut)
-def stop_focus_session() -> FocusStateOut:
+def stop_focus_session(user: auth.User = Depends(get_current_user)) -> FocusStateOut:
     try:
-        manager.stop()
+        manager.stop(user.id)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    return _build_focus_state_out(manager.snapshot())
+    return _build_focus_state_out(manager.snapshot(user.id))

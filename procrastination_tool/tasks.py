@@ -46,6 +46,16 @@ tabs," not arbitrary nesting. See reclassify_tags.py for the real
 categorization applied to this project's actual tags (PhD core/PhD side/
 Education/ASPARi operation/Personal), confirmed with the user rather than
 guessed.
+
+Multi-user follow-up: every function now takes a leading `user_id` and
+scopes its query by it. `tags.name UNIQUE` became `UNIQUE(user_id, name)`
+(one user's tag name shouldn't block another's) and `today_rollover`/
+`week_rollover` -- previously true singleton rows (`CHECK (id = 1)`) --
+became one row per user (`user_id INTEGER PRIMARY KEY`). Both are schema
+changes ALTER TABLE can't make in place on an existing DB; the one-time
+scripts/bootstrap_multiuser.py rebuilds them for the real, already-populated
+data/sessions.db. `task_tags` needs no `user_id` of its own -- it's a pure
+join table keyed by `task_id`, which is already user-scoped.
 """
 import sqlite3
 from contextlib import closing
@@ -67,6 +77,7 @@ ALL_STATUSES = (STATUS_NOT_STARTED, STATUS_IN_PROGRESS, STATUS_ON_HOLD, STATUS_C
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
     name TEXT NOT NULL,
     priority TEXT NOT NULL,
     effort_minutes INTEGER NOT NULL,
@@ -76,7 +87,9 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 CREATE TABLE IF NOT EXISTS tags (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    UNIQUE(user_id, name)
 );
 CREATE TABLE IF NOT EXISTS task_tags (
     task_id INTEGER NOT NULL,
@@ -84,19 +97,24 @@ CREATE TABLE IF NOT EXISTS task_tags (
     PRIMARY KEY (task_id, tag_id)
 );
 CREATE TABLE IF NOT EXISTS today_rollover (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
+    user_id INTEGER PRIMARY KEY,
     last_run_date TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS week_rollover (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
+    user_id INTEGER PRIMARY KEY,
     last_run_week_start TEXT NOT NULL
 );
 """
 
 # Guarded ALTER TABLE additions -- same lazy-migration pattern used by
 # deadlines.py/proactive_scheduler.py, safe to run against a DB that
-# already has these columns (see _ensure_columns).
+# already has these columns (see _ensure_columns). `user_id` is nullable
+# here (SQLite can't add a NOT NULL column with no default to a table that
+# already has rows) -- scripts/bootstrap_multiuser.py backfills any
+# pre-existing NULL rows to the owner's account; every new row from
+# add_task() always supplies a real one.
 _NEW_COLUMNS = {
+    "user_id": "INTEGER",
     "specific_project": "TEXT",
     "is_today": "INTEGER NOT NULL DEFAULT 0",
     "position": "INTEGER NOT NULL DEFAULT 0",
@@ -157,6 +175,7 @@ def _connect() -> sqlite3.Connection:
 @dataclass
 class Task:
     id: int
+    user_id: int
     name: str
     priority: str
     effort_minutes: int
@@ -177,7 +196,7 @@ class Task:
 
 def _row_to_task(row: sqlite3.Row, tags: Optional[List[str]] = None) -> Task:
     return Task(
-        id=row["id"], name=row["name"], priority=row["priority"],
+        id=row["id"], user_id=row["user_id"], name=row["name"], priority=row["priority"],
         effort_minutes=row["effort_minutes"], notes=row["notes"],
         status=row["status"], created_at=datetime.fromisoformat(row["created_at"]),
         specific_project=row["specific_project"],
@@ -221,17 +240,20 @@ def _normalize_tags(tag_names: List[str]) -> List[str]:
     return result
 
 
-def _set_task_tags_locked(conn: sqlite3.Connection, task_id: int, tag_names: List[str]) -> None:
+def _set_task_tags_locked(
+    conn: sqlite3.Connection, user_id: int, task_id: int, tag_names: List[str]
+) -> None:
     """Replace `task_id`'s full tag set with `tag_names`, creating any tag
     that doesn't already exist yet (case-sensitive match -- "PQi" and "pqi"
     are treated as distinct tags, same as Notion select options). Must be
     called with `conn` already open; does not commit (caller's
     responsibility, same convention as the rest of this module's
-    multi-statement writes)."""
+    multi-statement writes). Caller is responsible for having already
+    verified `task_id` belongs to `user_id` -- this function trusts it."""
     names = _normalize_tags(tag_names)
     conn.execute("DELETE FROM task_tags WHERE task_id = ?", (task_id,))
     for name in names:
-        tag_id = _get_or_create_tag_id(conn, name)
+        tag_id = _get_or_create_tag_id(conn, user_id, name)
         conn.execute(
             "INSERT OR IGNORE INTO task_tags (task_id, tag_id) VALUES (?, ?)", (task_id, tag_id)
         )
@@ -243,8 +265,8 @@ class TagInfo:
     parent: Optional[str]  # None for a top-level "Project" tag
 
 
-def list_tags() -> List[TagInfo]:
-    """Every tag that's ever been created, alphabetically, with its parent
+def list_tags(user_id: int) -> List[TagInfo]:
+    """Every tag `user_id` has ever created, alphabetically, with its parent
     (if any) -- the source for the Board's project tabs and the tag
     editor's project/sub-tag picker. Persists independently of current
     usage (same as a Notion select property's option list), so a tag
@@ -252,24 +274,27 @@ def list_tags() -> List[TagInfo]:
     with closing(_connect()) as conn:
         rows = conn.execute(
             "SELECT t.name, p.name FROM tags t LEFT JOIN tags p ON p.id = t.parent_id "
-            "ORDER BY t.name COLLATE NOCASE"
+            "WHERE t.user_id = ? ORDER BY t.name COLLATE NOCASE",
+            (user_id,),
         ).fetchall()
     return [TagInfo(name=r[0], parent=r[1]) for r in rows]
 
 
-def _get_or_create_tag_id(conn: sqlite3.Connection, name: str) -> int:
-    conn.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (name,))
-    return conn.execute("SELECT id FROM tags WHERE name = ?", (name,)).fetchone()[0]
+def _get_or_create_tag_id(conn: sqlite3.Connection, user_id: int, name: str) -> int:
+    conn.execute("INSERT OR IGNORE INTO tags (user_id, name) VALUES (?, ?)", (user_id, name))
+    return conn.execute(
+        "SELECT id FROM tags WHERE user_id = ? AND name = ?", (user_id, name)
+    ).fetchone()[0]
 
 
-def set_tag_parent(name: str, parent: Optional[str]) -> TagInfo:
-    """Create `name` (if it doesn't already exist) and set its parent to
-    `parent` (creating that too if needed), or clear it back to top-level
-    if `parent` is None. Enforces exactly two levels: `parent` must itself
-    be a top-level tag (no parent of its own) -- raises ValueError for a
-    self-parent or a parent that already has a parent, rather than
-    silently allowing a deeper chain than the Board's two-tab-row UI can
-    represent."""
+def set_tag_parent(user_id: int, name: str, parent: Optional[str]) -> TagInfo:
+    """Create `name` (if it doesn't already exist for `user_id`) and set its
+    parent to `parent` (creating that too if needed), or clear it back to
+    top-level if `parent` is None. Enforces exactly two levels: `parent`
+    must itself be a top-level tag (no parent of its own) -- raises
+    ValueError for a self-parent or a parent that already has a parent,
+    rather than silently allowing a deeper chain than the Board's
+    two-tab-row UI can represent."""
     name = name.strip()
     if not name:
         raise ValueError("Tag name can't be empty")
@@ -279,12 +304,12 @@ def set_tag_parent(name: str, parent: Optional[str]) -> TagInfo:
             raise ValueError("A tag can't be its own parent")
 
     with closing(_connect()) as conn:
-        tag_id = _get_or_create_tag_id(conn, name)
+        tag_id = _get_or_create_tag_id(conn, user_id, name)
 
         if parent is None:
             conn.execute("UPDATE tags SET parent_id = NULL WHERE id = ?", (tag_id,))
         else:
-            parent_id = _get_or_create_tag_id(conn, parent)
+            parent_id = _get_or_create_tag_id(conn, user_id, parent)
             parent_of_parent = conn.execute(
                 "SELECT parent_id FROM tags WHERE id = ?", (parent_id,)
             ).fetchone()[0]
@@ -302,7 +327,26 @@ def set_tag_parent(name: str, parent: Optional[str]) -> TagInfo:
     return TagInfo(name=row[0], parent=row[1])
 
 
+def _check_project_ownership(user_id: int, project_id: Optional[int]) -> None:
+    """add_task/update_task's `project_id` link had zero ownership check
+    before multi-user -- any task could link to any projects.py Project
+    regardless of who owned it. `project_id is None` ("no project"/"leave
+    unchanged") and `project_id == 0` (update_task's "unlink" sentinel)
+    both mean nothing to check here. Lazy import: projects.py imports names
+    from this module at its own top level, so importing it back at this
+    module's top level would be circular -- deferring the import to call
+    time (after both modules have already finished loading) sidesteps
+    that."""
+    if project_id is None or project_id == 0:
+        return
+    from .projects import get_project as _get_project
+
+    if _get_project(user_id, project_id) is None:
+        raise ValueError(f"Project {project_id} does not belong to this user")
+
+
 def add_task(
+    user_id: int,
     name: str,
     priority: str,
     notes: str = "",
@@ -331,25 +375,26 @@ def add_task(
         raise ValueError(f"Unknown priority quadrant: {priority!r}")
     if status not in ALL_STATUSES:
         raise ValueError(f"Unknown status: {status!r}")
+    _check_project_ownership(user_id, project_id)
     effort_minutes = PRIORITY_DURATION_MINUTES.get(priority, 60)
     created_at = datetime.now()
     completed_at = created_at if status == STATUS_COMPLETED else None
     with closing(_connect()) as conn:
         cur = conn.execute(
-            "INSERT INTO tasks (name, priority, effort_minutes, notes, status, created_at, "
-            "specific_project, is_today, position, completed_at, project_id, is_draft) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)",
-            (name, priority, effort_minutes, notes, status, created_at.isoformat(),
+            "INSERT INTO tasks (user_id, name, priority, effort_minutes, notes, status, "
+            "created_at, specific_project, is_today, position, completed_at, project_id, "
+            "is_draft) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)",
+            (user_id, name, priority, effort_minutes, notes, status, created_at.isoformat(),
              specific_project, completed_at.isoformat() if completed_at else None, project_id,
              1 if is_draft else 0),
         )
         task_id = cur.lastrowid
         normalized_tags = _normalize_tags(tags) if tags else []
         if normalized_tags:
-            _set_task_tags_locked(conn, task_id, normalized_tags)
+            _set_task_tags_locked(conn, user_id, task_id, normalized_tags)
         conn.commit()
     return Task(
-        id=task_id, name=name, priority=priority, effort_minutes=effort_minutes,
+        id=task_id, user_id=user_id, name=name, priority=priority, effort_minutes=effort_minutes,
         notes=notes, status=status, created_at=created_at,
         specific_project=specific_project, is_today=False, position=0,
         completed_at=completed_at, tags=normalized_tags, project_id=project_id,
@@ -357,7 +402,7 @@ def add_task(
     )
 
 
-def list_actionable_tasks() -> List[Task]:
+def list_actionable_tasks(user_id: int) -> List[Task]:
     """Not-started/in-progress tasks, ranked effort-first (same PRIORITY_ORDER
     notion_tasks.py used), tie-broken by creation order. There's no start-date
     filtering here -- native tasks have no start-date concept, they're
@@ -365,8 +410,8 @@ def list_actionable_tasks() -> List[Task]:
     with closing(_connect()) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
-            "SELECT * FROM tasks WHERE status IN (?, ?) ORDER BY id",
-            (STATUS_NOT_STARTED, STATUS_IN_PROGRESS),
+            "SELECT * FROM tasks WHERE user_id = ? AND status IN (?, ?) ORDER BY id",
+            (user_id, STATUS_NOT_STARTED, STATUS_IN_PROGRESS),
         ).fetchall()
         tags_by_id = _tags_by_task_id(conn, [r["id"] for r in rows])
     result = [_row_to_task(r, tags_by_id[r["id"]]) for r in rows]
@@ -379,14 +424,14 @@ def list_actionable_tasks() -> List[Task]:
     return result
 
 
-def list_all_tasks() -> List[Task]:
-    """Every task regardless of status -- the Board's data source (unlike
-    list_actionable_tasks(), which deliberately excludes on-hold/completed
-    since it's meant for the old proactive-nudge picker). Ordered by
-    quadrant rank, then manual `position`, then creation order."""
+def list_all_tasks(user_id: int) -> List[Task]:
+    """Every task `user_id` owns, regardless of status -- the Board's data
+    source (unlike list_actionable_tasks(), which deliberately excludes
+    on-hold/completed since it's meant for the old proactive-nudge picker).
+    Ordered by quadrant rank, then manual `position`, then creation order."""
     with closing(_connect()) as conn:
         conn.row_factory = sqlite3.Row
-        rows = conn.execute("SELECT * FROM tasks").fetchall()
+        rows = conn.execute("SELECT * FROM tasks WHERE user_id = ?", (user_id,)).fetchall()
         tags_by_id = _tags_by_task_id(conn, [r["id"] for r in rows])
     result = [_row_to_task(r, tags_by_id[r["id"]]) for r in rows]
 
@@ -398,7 +443,7 @@ def list_all_tasks() -> List[Task]:
     return result
 
 
-def list_tasks_for_project(project_id: int) -> List[Task]:
+def list_tasks_for_project(user_id: int, project_id: int) -> List[Task]:
     """A project's breakdown steps, oldest first -- backs the Project
     roadmap's vertical milestone timeline (see projects.py). Chronological
     order rather than manual `position`, matching list_all_tasks()'s own
@@ -407,16 +452,19 @@ def list_tasks_for_project(project_id: int) -> List[Task]:
     with closing(_connect()) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
-            "SELECT * FROM tasks WHERE project_id = ? ORDER BY created_at", (project_id,)
+            "SELECT * FROM tasks WHERE user_id = ? AND project_id = ? ORDER BY created_at",
+            (user_id, project_id),
         ).fetchall()
         tags_by_id = _tags_by_task_id(conn, [r["id"] for r in rows])
     return [_row_to_task(r, tags_by_id[r["id"]]) for r in rows]
 
 
-def get_task(task_id: int) -> Optional[Task]:
+def get_task(user_id: int, task_id: int) -> Optional[Task]:
     with closing(_connect()) as conn:
         conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        row = conn.execute(
+            "SELECT * FROM tasks WHERE id = ? AND user_id = ?", (task_id, user_id)
+        ).fetchone()
         if row is None:
             return None
         tags_by_id = _tags_by_task_id(conn, [task_id])
@@ -424,6 +472,7 @@ def get_task(task_id: int) -> Optional[Task]:
 
 
 def update_task(
+    user_id: int,
     task_id: int,
     name: Optional[str] = None,
     priority: Optional[str] = None,
@@ -451,11 +500,20 @@ def update_task(
     id) to unlink it, since JSON has no way to distinguish "field omitted"
     from "field sent as null" once it reaches an Optional Python param.
     `is_draft` is the Roadmap draft-stage release toggle -- the Board's
-    "Release to Pool" action sends `is_draft=False`."""
+    "Release to Pool" action sends `is_draft=False`.
+
+    Returns None for a `task_id` that doesn't exist OR doesn't belong to
+    `user_id` -- checked up front, before any mutation, so a wrong-owner
+    `tags` edit (which isn't itself gated by the WHERE-scoped UPDATE below)
+    can't slip through and touch another user's task_tags rows."""
+    if get_task(user_id, task_id) is None:
+        return None
     if priority is not None and priority not in PRIORITY_ORDER:
         raise ValueError(f"Unknown priority quadrant: {priority!r}")
     if status is not None and status not in ALL_STATUSES:
         raise ValueError(f"Unknown status: {status!r}")
+    if project_id is not None:
+        _check_project_ownership(user_id, project_id)
 
     fields = []
     values: list = []
@@ -501,30 +559,41 @@ def update_task(
         values.append(1 if is_draft else 0)
 
     if not fields and tags is None:
-        return get_task(task_id)
+        return get_task(user_id, task_id)
 
     with closing(_connect()) as conn:
         if fields:
-            values_with_id = values + [task_id]
-            conn.execute(f"UPDATE tasks SET {', '.join(fields)} WHERE id = ?", values_with_id)
+            values_with_id = values + [task_id, user_id]
+            conn.execute(
+                f"UPDATE tasks SET {', '.join(fields)} WHERE id = ? AND user_id = ?",
+                values_with_id,
+            )
         if tags is not None:
-            _set_task_tags_locked(conn, task_id, tags)
+            _set_task_tags_locked(conn, user_id, task_id, tags)
         conn.commit()
-    return get_task(task_id)
+    return get_task(user_id, task_id)
 
 
-def mark_in_progress(task_id: int) -> None:
-    update_task(task_id, status=STATUS_IN_PROGRESS)
+def mark_in_progress(user_id: int, task_id: int) -> None:
+    update_task(user_id, task_id, status=STATUS_IN_PROGRESS)
 
 
-def mark_completed(task_id: int) -> None:
-    update_task(task_id, status=STATUS_COMPLETED)
+def mark_completed(user_id: int, task_id: int) -> None:
+    update_task(user_id, task_id, status=STATUS_COMPLETED)
 
 
-def delete_task(task_id: int) -> None:
+def delete_task(user_id: int, task_id: int) -> None:
+    """No-op for a `task_id` that doesn't exist or isn't owned by
+    `user_id` -- checked up front for the same reason update_task checks
+    it: `task_tags` has no `user_id` of its own, so deleting by bare
+    `task_id` without first confirming ownership could touch another
+    user's join-table rows for an id collision that can't actually happen
+    (ids are global, not per-user) but is cheap to guard against anyway."""
+    if get_task(user_id, task_id) is None:
+        return
     with closing(_connect()) as conn:
         conn.execute("DELETE FROM task_tags WHERE task_id = ?", (task_id,))
-        conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        conn.execute("DELETE FROM tasks WHERE id = ? AND user_id = ?", (task_id, user_id))
         conn.commit()
 
 
@@ -554,28 +623,29 @@ def _pick_carry_forward_candidate(stale: List[Task]) -> Optional[Task]:
     return min(pool, key=key)
 
 
-def roll_over_today(today: Optional[str] = None) -> RolloverResult:
-    """Idempotent per calendar day (guarded by today_rollover.last_run_date):
-    carries exactly one stale is_today task forward (tagging it with
-    carried_forward_date=today), unmarks every other stale is_today task
-    back to the pool, and clears is_today on any completed task still
-    flagged (hygiene -- the Board never renders completed tasks anyway, but
-    this keeps is_today meaning "actually in Today" in the DB). Called
-    lazily from GET /api/backlog rather than a background tick loop --
-    day-rollover has no time-sensitive side effects the way focus-session
+def roll_over_today(user_id: int, today: Optional[str] = None) -> RolloverResult:
+    """Idempotent per calendar day per user (guarded by
+    today_rollover.last_run_date, now one row per user_id rather than a
+    single global row): carries exactly one stale is_today task forward
+    (tagging it with carried_forward_date=today), unmarks every other stale
+    is_today task back to the pool, and clears is_today on any completed
+    task still flagged (hygiene -- the Board never renders completed tasks
+    anyway, but this keeps is_today meaning "actually in Today" in the DB).
+    Called lazily from GET /api/backlog rather than a background tick loop
+    -- day-rollover has no time-sensitive side effects the way focus-session
     auto-complete does, so it doesn't need one."""
     today = today or datetime.now().date().isoformat()
     with closing(_connect()) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
-            "SELECT last_run_date FROM today_rollover WHERE id = 1"
+            "SELECT last_run_date FROM today_rollover WHERE user_id = ?", (user_id,)
         ).fetchone()
         if row and row["last_run_date"] == today:
             return RolloverResult(ran=False, carried_task=None, unmarked_count=0)
 
         stale_rows = conn.execute(
-            "SELECT * FROM tasks WHERE is_today = 1 AND status != ?",
-            (STATUS_COMPLETED,),
+            "SELECT * FROM tasks WHERE user_id = ? AND is_today = 1 AND status != ?",
+            (user_id, STATUS_COMPLETED),
         ).fetchall()
         tags_by_id = _tags_by_task_id(conn, [r["id"] for r in stale_rows])
         stale = [_row_to_task(r, tags_by_id[r["id"]]) for r in stale_rows]
@@ -591,13 +661,13 @@ def roll_over_today(today: Optional[str] = None) -> RolloverResult:
                 conn.execute("UPDATE tasks SET is_today = 0 WHERE id = ?", (t.id,))
 
         conn.execute(
-            "UPDATE tasks SET is_today = 0 WHERE is_today = 1 AND status = ?",
-            (STATUS_COMPLETED,),
+            "UPDATE tasks SET is_today = 0 WHERE user_id = ? AND is_today = 1 AND status = ?",
+            (user_id, STATUS_COMPLETED),
         )
         conn.execute(
-            "INSERT INTO today_rollover (id, last_run_date) VALUES (1, ?) "
-            "ON CONFLICT(id) DO UPDATE SET last_run_date = excluded.last_run_date",
-            (today,),
+            "INSERT INTO today_rollover (user_id, last_run_date) VALUES (?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET last_run_date = excluded.last_run_date",
+            (user_id, today),
         )
         conn.commit()
 
@@ -611,10 +681,11 @@ class WeekRolloverResult:
     cleared_count: int
 
 
-def roll_over_week(today: Optional[str] = None) -> WeekRolloverResult:
-    """Idempotent per ISO week (guarded by week_rollover.last_run_week_start):
-    clears is_this_week on every non-completed task still flagged for the
-    week that just ended. Deliberately a reset, not an auto-carry like
+def roll_over_week(user_id: int, today: Optional[str] = None) -> WeekRolloverResult:
+    """Idempotent per ISO week per user (guarded by
+    week_rollover.last_run_week_start, now one row per user_id): clears
+    is_this_week on every non-completed task still flagged for the week
+    that just ended. Deliberately a reset, not an auto-carry like
     roll_over_today() -- re-committing for the new week each Monday is the
     actual "sprint planning" moment this feature exists to create, and
     there's no clean single-task heuristic to generalize the daily
@@ -627,26 +698,26 @@ def roll_over_week(today: Optional[str] = None) -> WeekRolloverResult:
     with closing(_connect()) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
-            "SELECT last_run_week_start FROM week_rollover WHERE id = 1"
+            "SELECT last_run_week_start FROM week_rollover WHERE user_id = ?", (user_id,)
         ).fetchone()
         if row and row["last_run_week_start"] == current_week_start:
             return WeekRolloverResult(ran=False, cleared_count=0)
 
         stale_rows = conn.execute(
-            "SELECT id FROM tasks WHERE is_this_week = 1 AND status != ?",
-            (STATUS_COMPLETED,),
+            "SELECT id FROM tasks WHERE user_id = ? AND is_this_week = 1 AND status != ?",
+            (user_id, STATUS_COMPLETED),
         ).fetchall()
         for r in stale_rows:
             conn.execute("UPDATE tasks SET is_this_week = 0 WHERE id = ?", (r["id"],))
 
         conn.execute(
-            "UPDATE tasks SET is_this_week = 0 WHERE is_this_week = 1 AND status = ?",
-            (STATUS_COMPLETED,),
+            "UPDATE tasks SET is_this_week = 0 WHERE user_id = ? AND is_this_week = 1 AND status = ?",
+            (user_id, STATUS_COMPLETED),
         )
         conn.execute(
-            "INSERT INTO week_rollover (id, last_run_week_start) VALUES (1, ?) "
-            "ON CONFLICT(id) DO UPDATE SET last_run_week_start = excluded.last_run_week_start",
-            (current_week_start,),
+            "INSERT INTO week_rollover (user_id, last_run_week_start) VALUES (?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET last_run_week_start = excluded.last_run_week_start",
+            (user_id, current_week_start),
         )
         conn.commit()
 

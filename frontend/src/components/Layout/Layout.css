@@ -24,3 +24,30 @@
   border-color: var(--accent-border);
   color: #fff;
 }
+
+.nav-bar__account {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+  font-size: 0.85rem;
+}
+
+.nav-bar__username {
+  color: var(--text);
+}
+
+.nav-bar__logout {
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.nav-bar__logout:hover {
+  border-color: var(--accent-border);
+  color: var(--text-h);
+}

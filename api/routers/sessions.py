@@ -6,27 +6,32 @@ generalized from app.py's hardcoded 7 days to the `days` query param.
 from datetime import datetime, timedelta
 from typing import List
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
-from procrastination_tool import focus_timer
+from procrastination_tool import auth, focus_timer
 
+from ..deps import get_current_user
 from ..schemas import SessionOut, StatsOut
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
 @router.get("/recent", response_model=List[SessionOut])
-def get_recent_sessions(limit: int = Query(50, ge=1)) -> List[SessionOut]:
-    sessions = focus_timer.get_recent_sessions(limit=limit)
+def get_recent_sessions(
+    limit: int = Query(50, ge=1), user: auth.User = Depends(get_current_user)
+) -> List[SessionOut]:
+    sessions = focus_timer.get_recent_sessions(user.id, limit=limit)
     return [SessionOut(**vars(s)) for s in sessions]
 
 
 @router.get("/stats", response_model=StatsOut)
-def get_stats(days: int = Query(7, ge=1)) -> StatsOut:
+def get_stats(
+    days: int = Query(7, ge=1), user: auth.User = Depends(get_current_user)
+) -> StatsOut:
     # get_recent_sessions is ordered id DESC with a fixed limit -- app.py
     # uses limit=50 for the same "recent sessions" fetch this stat block
     # windows down from, so mirror that here too.
-    sessions = focus_timer.get_recent_sessions(limit=50)
+    sessions = focus_timer.get_recent_sessions(user.id, limit=50)
 
     window_start = datetime.now() - timedelta(days=days)
     window_sessions = [s for s in sessions if s.start_time >= window_start]

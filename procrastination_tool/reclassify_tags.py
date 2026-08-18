@@ -19,7 +19,7 @@ Tags not listed below (e.g. "Other", Notion's literal catch-all) are left
 as-is -- top-level, uncategorized -- rather than force-fit into one of the
 5 projects.
 """
-from . import tasks
+from . import auth, tasks
 
 _MAPPING = {
     "PhD core": [
@@ -48,16 +48,25 @@ _MAPPING = {
 
 
 def reclassify() -> None:
+    # Multi-user follow-up: this is the owner's own personal tag taxonomy
+    # (real project names like "PhD core"), so it always applies to the
+    # owner's account specifically -- same "no HTTP session to read a
+    # user_id from, so resolve the owner directly" reasoning as
+    # focus_cli.py.
+    owner = auth.get_owner_user()
+    if owner is None:
+        raise RuntimeError("No account exists yet -- run scripts/create_user.py first.")
+
     for project in _MAPPING:
-        tasks.set_tag_parent(project, None)  # ensure it's top-level, not nested
+        tasks.set_tag_parent(owner.id, project, None)  # ensure it's top-level, not nested
 
     applied = 0
     for project, sub_tags in _MAPPING.items():
         for sub_tag in sub_tags:
-            tasks.set_tag_parent(sub_tag, project)
+            tasks.set_tag_parent(owner.id, sub_tag, project)
             applied += 1
 
-    all_tags = {t.name for t in tasks.list_tags()}
+    all_tags = {t.name for t in tasks.list_tags(owner.id)}
     mapped = {name for names in _MAPPING.values() for name in names} | set(_MAPPING.keys())
     unmapped = sorted(all_tags - mapped)
 

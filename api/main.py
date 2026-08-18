@@ -31,14 +31,16 @@ routers (a mount at "/" would otherwise shadow anything registered after
 it).
 
 Phase 5 adds a `lifespan` background task that calls
-focus_session_manager.manager.tick() once a second for as long as the
-process is up. This is what guarantees a running session actually
-auto-completes (and a paused one auto-fails) on schedule with its
-notification/DB-log side effects, even if no browser tab happens to
-be polling GET /api/focus/state at that exact moment -- the router's own
-GET handler also calls tick() inline (see focus.py) for freshness between
-this loop's once-a-second ticks, but the two calls serve different
-purposes: the router's tick keeps a *polling* client's snapshot fresh,
+focus_session_manager.manager.tick_all() once a second for as long as the
+process is up (multi-user follow-up: ticks every user with an active
+session, not a single global one -- see that module's docstring). This is
+what guarantees a running session actually auto-completes (and a paused
+one auto-fails) on schedule with its notification/DB-log side effects,
+even if no browser tab happens to be polling GET /api/focus/state at that
+exact moment -- the router's own GET handler also calls tick() inline
+(see focus.py) for freshness between this loop's once-a-second ticks, but
+the two calls serve different purposes: the router's tick keeps a
+*polling* client's snapshot fresh,
 this loop guarantees the transition fires even with *no* client polling.
 
 2026-08-11 redesign, retired same day: the push-based "Now" nudge
@@ -98,7 +100,7 @@ from procrastination_tool import device_lock
 from procrastination_tool.focus_session_manager import manager as focus_manager
 
 from .routers import (
-    backlog, calendar, evaluation, focus, now, projects, push,
+    auth, backlog, calendar, evaluation, focus, projects, push,
     retro, sessions, standup, tags,
 )
 
@@ -115,7 +117,10 @@ async def lifespan(app: FastAPI):
 
     async def _tick_loop():
         while True:
-            await asyncio.to_thread(focus_manager.tick)
+            # Multi-user follow-up: ticks every user with an active
+            # session, not one global session -- see
+            # focus_session_manager.py's docstring.
+            await asyncio.to_thread(focus_manager.tick_all)
             await asyncio.sleep(1)
 
     task = asyncio.create_task(_tick_loop())
@@ -132,14 +137,24 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Procrastination Tool API", lifespan=lifespan)
 
+# Multi-user follow-up: login/logout/me. Registered first, same as every
+# other router below -- it isn't gated by its own dependency, obviously.
+app.include_router(auth.router, prefix="/api")
 app.include_router(calendar.router, prefix="/api")
 app.include_router(sessions.router, prefix="/api")
 app.include_router(focus.router, prefix="/api")
 # 2026-08-11 redesign: native task backlog (replaces Notion) -- see
-# procrastination_tool/tasks.py. `now` stays registered but inert (see the
-# module docstring above -- proactive_scheduler no longer ticks).
+# procrastination_tool/tasks.py.
 app.include_router(backlog.router, prefix="/api")
-app.include_router(now.router, prefix="/api")
+# `now` (routers/now.py, proactive_scheduler.py) is no longer registered as
+# of the multi-user follow-up: it has no user concept of its own (its
+# functions took no user_id at all), so it would either crash against
+# tasks.py's new signatures or, if patched to a hardcoded owner id, leak
+# the owner's private task backlog to any caller including the friend --
+# and it's unreachable from the live UI anyway (NowView/useNowPolling are
+# unimported dead code, see App.tsx's docstring). Left on disk, unused,
+# same convention as routers/tasks.py, planner.py, character.py, gear.py,
+# pm_agent.py above.
 app.include_router(tags.router, prefix="/api")
 # End-of-day evaluation + mood tracker (same-day follow-up).
 app.include_router(evaluation.router, prefix="/api")

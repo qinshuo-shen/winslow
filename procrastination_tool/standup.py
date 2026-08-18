@@ -40,6 +40,7 @@ from .config import ANTHROPIC_API_KEY, SESSION_DB_PATH, STANDUP_MOCK, STANDUP_MO
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS daily_standups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
     note_date TEXT NOT NULL,
     generated_at TEXT NOT NULL,
     model_used TEXT NOT NULL,
@@ -53,10 +54,24 @@ CREATE INDEX IF NOT EXISTS idx_daily_standups_note_date ON daily_standups(note_d
 # first -- same constant/reasoning as pm_agent.py's own _MAX_BACKLOG_TASKS.
 _MAX_BACKLOG_TASKS = 150
 
+# Nullable for the same reason every other module's multi-user column is:
+# ALTER TABLE can't add NOT NULL with no default to a table that already
+# has rows. scripts/bootstrap_multiuser.py backfills existing NULL rows to
+# the owner's account.
+_NEW_COLUMNS = {"user_id": "INTEGER"}
+
+
+def _ensure_columns(conn: sqlite3.Connection) -> None:
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(daily_standups)")}
+    for name, coltype in _NEW_COLUMNS.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE daily_standups ADD COLUMN {name} {coltype}")
+
 
 def _connect() -> sqlite3.Connection:
     conn = sqlite3.connect(SESSION_DB_PATH)
     conn.executescript(_SCHEMA)
+    _ensure_columns(conn)
     conn.commit()
     return conn
 
@@ -185,7 +200,7 @@ def get_client() -> StandupClient:
     return AnthropicStandupClient(api_key=ANTHROPIC_API_KEY, model=STANDUP_MODEL)
 
 
-def build_standup_snapshot(question: str) -> dict:
+def build_standup_snapshot(user_id: int, question: str) -> dict:
     """The full open backlog (every non-completed, non-draft task, not just
     today's) -- needed so a question can actually be answered, mirroring
     pm_agent.build_snapshot()'s own backlog shape and cap. Still no task
@@ -194,7 +209,7 @@ def build_standup_snapshot(question: str) -> dict:
     mood data stay structurally unreachable; only per-task `created_at`/
     `carried_forward` are newly exposed here, not history in aggregate.
     See _SYSTEM_PROMPT for why that's an acceptable line to draw."""
-    all_tasks = tasks.list_all_tasks()
+    all_tasks = tasks.list_all_tasks(user_id)
     today_str = date_cls.today().isoformat()
 
     open_tasks = [
@@ -226,11 +241,11 @@ def build_standup_snapshot(question: str) -> dict:
     }
 
 
-def generate_standup(client: StandupClient, question: str = "") -> StandupNote:
+def generate_standup(user_id: int, client: StandupClient, question: str = "") -> StandupNote:
     """Builds the snapshot, calls the client, persists ONLY the resulting
     note (never `question` -- see the module docstring for why there's no
     column for it at all), keyed by today's note_date."""
-    snapshot = build_standup_snapshot(question)
+    snapshot = build_standup_snapshot(user_id, question)
     note_text = client.generate_note(snapshot)
     generated_at = datetime.now()
     note_date = date_cls.today()
@@ -238,9 +253,9 @@ def generate_standup(client: StandupClient, question: str = "") -> StandupNote:
 
     with closing(_connect()) as conn:
         conn.execute(
-            "INSERT INTO daily_standups (note_date, generated_at, model_used, note_markdown) "
-            "VALUES (?, ?, ?, ?)",
-            (note_date.isoformat(), generated_at.isoformat(), model_used, note_text),
+            "INSERT INTO daily_standups (user_id, note_date, generated_at, model_used, "
+            "note_markdown) VALUES (?, ?, ?, ?, ?)",
+            (user_id, note_date.isoformat(), generated_at.isoformat(), model_used, note_text),
         )
         conn.commit()
 
@@ -249,7 +264,7 @@ def generate_standup(client: StandupClient, question: str = "") -> StandupNote:
     )
 
 
-def get_today_note() -> Optional[StandupNote]:
+def get_today_note(user_id: int) -> Optional[StandupNote]:
     """The most recently generated note for TODAY specifically (not "most
     recent ever," unlike pm_agent.get_last_review()) -- "last generation
     today wins" if regenerated more than once, and a genuine midnight
@@ -258,8 +273,9 @@ def get_today_note() -> Optional[StandupNote]:
     with closing(_connect()) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
-            "SELECT * FROM daily_standups WHERE note_date = ? ORDER BY id DESC LIMIT 1",
-            (date_cls.today().isoformat(),),
+            "SELECT * FROM daily_standups WHERE user_id = ? AND note_date = ? "
+            "ORDER BY id DESC LIMIT 1",
+            (user_id, date_cls.today().isoformat()),
         ).fetchone()
     if row is None:
         return None

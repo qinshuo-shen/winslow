@@ -14,11 +14,12 @@ change, quadrant move, Today/Pool toggle, reorder, notes edit).
 from datetime import date
 from typing import List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
-from procrastination_tool import tasks
+from procrastination_tool import auth, tasks
 from procrastination_tool.weekly import week_start_date
 
+from ..deps import get_current_user
 from ..schemas import (
     BacklogTaskCreateRequest,
     BacklogTaskOut,
@@ -49,25 +50,27 @@ def _build_task_out(t: tasks.Task) -> BacklogTaskOut:
 
 
 @router.get("", response_model=List[BacklogTaskOut])
-def list_backlog() -> List[BacklogTaskOut]:
-    tasks.roll_over_today()
-    tasks.roll_over_week()
-    return [_build_task_out(t) for t in tasks.list_all_tasks()]
+def list_backlog(user: auth.User = Depends(get_current_user)) -> List[BacklogTaskOut]:
+    tasks.roll_over_today(user.id)
+    tasks.roll_over_week(user.id)
+    return [_build_task_out(t) for t in tasks.list_all_tasks(user.id)]
 
 
 @router.get("/today-status", response_model=BacklogTodayStatusOut)
-def get_today_status() -> BacklogTodayStatusOut:
-    tasks.roll_over_today()
+def get_today_status(user: auth.User = Depends(get_current_user)) -> BacklogTodayStatusOut:
+    tasks.roll_over_today(user.id)
     today = date.today()
-    has_today_tasks = any(t.is_today for t in tasks.list_all_tasks())
+    has_today_tasks = any(t.is_today for t in tasks.list_all_tasks(user.id))
     return BacklogTodayStatusOut(date=today, has_today_tasks=has_today_tasks)
 
 
 @router.post("", response_model=BacklogTaskOut)
-def create_task(body: BacklogTaskCreateRequest) -> BacklogTaskOut:
+def create_task(
+    body: BacklogTaskCreateRequest, user: auth.User = Depends(get_current_user)
+) -> BacklogTaskOut:
     try:
         task = tasks.add_task(
-            name=body.name, priority=body.priority, notes=body.notes,
+            user_id=user.id, name=body.name, priority=body.priority, notes=body.notes,
             specific_project=body.specific_project, tags=body.tags,
             project_id=body.project_id, is_draft=body.is_draft,
         )
@@ -77,12 +80,14 @@ def create_task(body: BacklogTaskCreateRequest) -> BacklogTaskOut:
 
 
 @router.patch("/{task_id}", response_model=BacklogTaskOut)
-def patch_task(task_id: int, body: BacklogTaskUpdateRequest) -> BacklogTaskOut:
-    if tasks.get_task(task_id) is None:
+def patch_task(
+    task_id: int, body: BacklogTaskUpdateRequest, user: auth.User = Depends(get_current_user)
+) -> BacklogTaskOut:
+    if tasks.get_task(user.id, task_id) is None:
         raise HTTPException(status_code=404, detail="Task not found")
     try:
         task = tasks.update_task(
-            task_id,
+            user.id, task_id,
             name=body.name, priority=body.priority, notes=body.notes,
             status=body.status, specific_project=body.specific_project,
             is_today=body.is_today, position=body.position, tags=body.tags,
@@ -95,18 +100,18 @@ def patch_task(task_id: int, body: BacklogTaskUpdateRequest) -> BacklogTaskOut:
 
 
 @router.post("/{task_id}/complete", response_model=BacklogTaskOut)
-def complete_task(task_id: int) -> BacklogTaskOut:
-    task = tasks.get_task(task_id)
+def complete_task(task_id: int, user: auth.User = Depends(get_current_user)) -> BacklogTaskOut:
+    task = tasks.get_task(user.id, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
-    tasks.mark_completed(task_id)
-    task = tasks.get_task(task_id)
+    tasks.mark_completed(user.id, task_id)
+    task = tasks.get_task(user.id, task_id)
     return _build_task_out(task)
 
 
 @router.delete("/{task_id}")
-def delete_task(task_id: int) -> dict:
-    if tasks.get_task(task_id) is None:
+def delete_task(task_id: int, user: auth.User = Depends(get_current_user)) -> dict:
+    if tasks.get_task(user.id, task_id) is None:
         raise HTTPException(status_code=404, detail="Task not found")
-    tasks.delete_task(task_id)
+    tasks.delete_task(user.id, task_id)
     return {"deleted": True}

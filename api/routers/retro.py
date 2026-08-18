@@ -15,10 +15,11 @@ GET  /api/retro/{week_start}   -- fetch a previously generated retro (404
 from datetime import date as date_cls
 from typing import List
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from procrastination_tool import evaluation
+from procrastination_tool import auth, evaluation
 
+from ..deps import get_current_user
 from ..schemas import WeeklyRetroGenerateRequest, WeeklyRetroOut
 
 router = APIRouter(prefix="/retro", tags=["retro"])
@@ -36,19 +37,25 @@ def _build_retro_out(r: "evaluation.WeeklyRetro") -> WeeklyRetroOut:
 
 
 @router.post("/generate", response_model=WeeklyRetroOut)
-def generate_retro(body: WeeklyRetroGenerateRequest) -> WeeklyRetroOut:
-    result = evaluation.generate_weekly_retro(body.week_start)
+def generate_retro(
+    body: WeeklyRetroGenerateRequest, user: auth.User = Depends(get_current_user)
+) -> WeeklyRetroOut:
+    result = evaluation.generate_weekly_retro(user.id, body.week_start)
     return _build_retro_out(result)
 
 
 @router.get("/history", response_model=List[WeeklyRetroOut])
-def get_retro_history(weeks: int = Query(6, ge=1, le=12)) -> List[WeeklyRetroOut]:
-    return [_build_retro_out(r) for r in evaluation.list_weekly_retros(weeks)]
+def get_retro_history(
+    weeks: int = Query(6, ge=1, le=12), user: auth.User = Depends(get_current_user)
+) -> List[WeeklyRetroOut]:
+    return [_build_retro_out(r) for r in evaluation.list_weekly_retros(user.id, weeks)]
 
 
 @router.get("/{week_start}", response_model=WeeklyRetroOut)
-def get_retro(week_start: date_cls) -> WeeklyRetroOut:
-    result = evaluation.get_weekly_retro(week_start)
+def get_retro(
+    week_start: date_cls, user: auth.User = Depends(get_current_user)
+) -> WeeklyRetroOut:
+    result = evaluation.get_weekly_retro(user.id, week_start)
     if result is None:
         raise HTTPException(status_code=404, detail=f"No retro generated for week of {week_start}")
     return _build_retro_out(result)

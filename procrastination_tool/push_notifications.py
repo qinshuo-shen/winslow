@@ -7,7 +7,7 @@ Linux VPS) or a same-tab-only browser Notification.
 Requires a one-time VAPID keypair (see scripts/generate_vapid_keys.py),
 written to data/vapid_private_key.pem -- gitignored, mirroring sessions.db.
 The `pywebpush` package (optional `push` extra) is imported lazily inside
-send_to_all() only, so nothing else in the app depends on it being
+send_to_user() only, so nothing else in the app depends on it being
 installed, matching pm_agent.py's lazy `import anthropic` convention.
 """
 import json
@@ -22,6 +22,7 @@ from .config import SESSION_DB_PATH, VAPID_CONTACT, VAPID_PRIVATE_KEY_PATH, VAPI
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS push_subscriptions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
     endpoint TEXT NOT NULL UNIQUE,
     p256dh TEXT NOT NULL,
     auth TEXT NOT NULL,
@@ -29,10 +30,24 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 );
 """
 
+# Nullable for the same reason every other module's multi-user column is:
+# ALTER TABLE can't add NOT NULL with no default to a table that already
+# has rows. scripts/bootstrap_multiuser.py backfills existing NULL rows to
+# the owner's account.
+_NEW_COLUMNS = {"user_id": "INTEGER"}
+
+
+def _ensure_columns(conn: sqlite3.Connection) -> None:
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(push_subscriptions)")}
+    for name, coltype in _NEW_COLUMNS.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE push_subscriptions ADD COLUMN {name} {coltype}")
+
 
 def _connect() -> sqlite3.Connection:
     conn = sqlite3.connect(SESSION_DB_PATH)
     conn.executescript(_SCHEMA)
+    _ensure_columns(conn)
     conn.commit()
     return conn
 
@@ -54,13 +69,21 @@ def is_configured() -> bool:
     return VAPID_PUBLIC_KEY is not None and VAPID_PRIVATE_KEY_PATH.exists()
 
 
-def add_subscription(endpoint: str, p256dh: str, auth: str) -> None:
+def add_subscription(user_id: int, endpoint: str, p256dh: str, auth: str) -> None:
+    """Upsert on the endpoint's own UNIQUE constraint. Deliberately
+    reassigns `user_id` on conflict rather than rejecting the re-subscribe
+    -- if the same physical device/browser subscribes while logged in as a
+    different account (e.g. a shared kiosk-style device), ownership of
+    that push endpoint transfers to whoever most recently subscribed. An
+    accepted edge case for a 2-user personal app, not something to build
+    device-fingerprinting around."""
     with closing(_connect()) as conn:
         conn.execute(
-            "INSERT INTO push_subscriptions (endpoint, p256dh, auth, created_at) "
-            "VALUES (?, ?, ?, ?) "
-            "ON CONFLICT(endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth",
-            (endpoint, p256dh, auth, datetime.now().isoformat()),
+            "INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, created_at) "
+            "VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT(endpoint) DO UPDATE SET "
+            "user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth",
+            (user_id, endpoint, p256dh, auth, datetime.now().isoformat()),
         )
         conn.commit()
 
@@ -71,15 +94,20 @@ def remove_subscription(endpoint: str) -> None:
         conn.commit()
 
 
-def list_subscriptions() -> List[PushSubscription]:
+def list_subscriptions(user_id: int) -> List[PushSubscription]:
     with closing(_connect()) as conn:
         conn.row_factory = sqlite3.Row
-        rows = conn.execute("SELECT endpoint, p256dh, auth FROM push_subscriptions").fetchall()
+        rows = conn.execute(
+            "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?",
+            (user_id,),
+        ).fetchall()
     return [PushSubscription(endpoint=r["endpoint"], p256dh=r["p256dh"], auth=r["auth"]) for r in rows]
 
 
-def send_to_all(title: str, body: str, tag: Optional[str] = None) -> None:
-    """Best-effort fan-out to every stored subscription. A dead/expired
+def send_to_user(user_id: int, title: str, body: str, tag: Optional[str] = None) -> None:
+    """Best-effort fan-out to `user_id`'s stored subscriptions only --
+    previously send_to_all() reached every subscription ever stored,
+    regardless of whose focus session actually completed. A dead/expired
     subscription (404/410 from the push service) is pruned; any other
     failure -- a non-2xx from the push service, or a request-layer failure
     (timeout, DNS, a malformed endpoint) since pywebpush.webpush() lets
@@ -94,7 +122,7 @@ def send_to_all(title: str, body: str, tag: Optional[str] = None) -> None:
     import requests
 
     payload = json.dumps({"title": title, "body": body, "tag": tag})
-    for sub in list_subscriptions():
+    for sub in list_subscriptions(user_id):
         try:
             pywebpush.webpush(
                 subscription_info={

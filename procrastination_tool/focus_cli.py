@@ -14,7 +14,7 @@ import argparse
 import os
 import sys
 
-from . import device_lock, focus_timer, notion_tasks
+from . import auth, device_lock, focus_timer, notion_tasks
 from .config import FOCUS_SESSION_MINUTES
 
 
@@ -64,7 +64,14 @@ def _status_label(s: focus_timer.SessionRow) -> str:
 
 
 def _cmd_history(args: argparse.Namespace) -> int:
-    sessions = focus_timer.get_recent_sessions(limit=args.limit)
+    # Multi-user follow-up: the CLI always runs as the owner (the first
+    # account created) -- see focus_timer.run_focus_session()'s docstring
+    # for why, same reasoning applies here.
+    owner = auth.get_owner_user()
+    if owner is None:
+        print("No account exists yet -- run scripts/create_user.py first.", file=sys.stderr)
+        return 1
+    sessions = focus_timer.get_recent_sessions(owner.id, limit=args.limit)
     if not sessions:
         print("No focus sessions logged yet.")
         return 0

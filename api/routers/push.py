@@ -12,11 +12,12 @@ POST /api/push/subscribe        -- register/refresh a browser's push
 POST /api/push/unsubscribe      -- forget a subscription (e.g. the user
                                     turned notifications off).
 """
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from procrastination_tool import push_notifications
+from procrastination_tool import auth, push_notifications
 from procrastination_tool.config import VAPID_PUBLIC_KEY
 
+from ..deps import get_current_user
 from ..schemas import PushSubscribeRequest, PushUnsubscribeRequest
 
 router = APIRouter(prefix="/push", tags=["push"])
@@ -28,12 +29,14 @@ def get_vapid_public_key() -> dict:
 
 
 @router.post("/subscribe")
-def subscribe(body: PushSubscribeRequest) -> dict:
-    push_notifications.add_subscription(body.endpoint, body.keys.p256dh, body.keys.auth)
+def subscribe(body: PushSubscribeRequest, user: auth.User = Depends(get_current_user)) -> dict:
+    push_notifications.add_subscription(user.id, body.endpoint, body.keys.p256dh, body.keys.auth)
     return {"ok": True}
 
 
 @router.post("/unsubscribe")
-def unsubscribe(body: PushUnsubscribeRequest) -> dict:
+def unsubscribe(
+    body: PushUnsubscribeRequest, user: auth.User = Depends(get_current_user)
+) -> dict:
     push_notifications.remove_subscription(body.endpoint)
     return {"ok": True}

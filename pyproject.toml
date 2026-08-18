@@ -17,7 +17,12 @@ dashboard = ["streamlit>=1.30", "streamlit-sortables>=0.3.1"]
 # `api/` package (sibling to procrastination_tool/ and app.py) that the
 # React frontend calls. Doesn't touch the `dashboard` group above -- app.py
 # stays on disk, untouched, same fallback convention as spin_wheel.py.
-api = ["fastapi>=0.115", "uvicorn>=0.30", "pydantic>=2.0"]
+#
+# Multi-user follow-up: bcrypt is a hard dependency of this extra (not its
+# own lazily-imported extra like `push`/`ai`) because password hashing is
+# load-bearing for every request once auth exists, not an optional feature
+# a deployment might skip.
+api = ["fastapi>=0.115", "uvicorn>=0.30", "pydantic>=2.0", "bcrypt>=4.0"]
 
 # Scrum-lite AI PM-agent (backlog review suggestions) -- optional, same
 # reasoning as the other groups: only procrastination_tool/pm_agent.py

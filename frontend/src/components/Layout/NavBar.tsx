@@ -1,4 +1,7 @@
-import { NavLink } from "react-router-dom";
+import { useState } from "react";
+import { NavLink, useNavigate } from "react-router-dom";
+import { useAuth } from "../../auth/AuthContext";
+import { ChangePasswordModal } from "../Auth/ChangePasswordModal";
 import "./Layout.css";
 
 // 4 top-level routes (2026-08 page-split redesign) -- NavLink's built-in
@@ -13,6 +16,15 @@ const NAV_ITEMS = [
 ] as const;
 
 export function NavBar() {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const [changingPassword, setChangingPassword] = useState(false);
+
+  async function handleLogout() {
+    await logout();
+    navigate("/login", { replace: true });
+  }
+
   return (
     <nav className="nav-bar">
       {NAV_ITEMS.map((item) => (
@@ -24,6 +36,24 @@ export function NavBar() {
           {item.label}
         </NavLink>
       ))}
+      {user && (
+        <span className="nav-bar__account">
+          <span className="nav-bar__username">{user.username}</span>
+          <button
+            type="button"
+            className="nav-bar__logout"
+            onClick={() => setChangingPassword(true)}
+          >
+            Change password
+          </button>
+          <button type="button" className="nav-bar__logout" onClick={handleLogout}>
+            Log out
+          </button>
+        </span>
+      )}
+      {changingPassword && (
+        <ChangePasswordModal onClose={() => setChangingPassword(false)} />
+      )}
     </nav>
   );
 }

@@ -3,6 +3,22 @@
 
 const BASE_PATH = "/api";
 
+// Multi-user follow-up: the session cookie is already sent automatically
+// (fetch defaults to `credentials: "same-origin"`, and this app is always
+// same-origin) -- no per-call change needed for that. What every verb
+// below DOES newly need is a shared signal for "the server says I'm not
+// logged in," since a session can expire/get revoked mid-use on any page.
+// Dispatching one DOM event here means AuthContext is the only thing that
+// has to listen for it, rather than every one of this app's many call
+// sites handling a 401 itself.
+export const UNAUTHORIZED_EVENT = "winslow:unauthorized";
+
+function reportIfUnauthorized(status: number): void {
+  if (status === 401) {
+    window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
+  }
+}
+
 export class ApiError extends Error {
   status: number;
   detail: unknown;
@@ -30,6 +46,7 @@ export async function apiGet<T>(path: string): Promise<T> {
   const body = text ? JSON.parse(text) : null;
 
   if (!res.ok) {
+    reportIfUnauthorized(res.status);
     const detail =
       body && typeof body === "object" && "detail" in body
         ? (body as { detail: unknown }).detail
@@ -52,6 +69,7 @@ export async function apiDelete<T>(path: string): Promise<T> {
   const body = text ? JSON.parse(text) : null;
 
   if (!res.ok) {
+    reportIfUnauthorized(res.status);
     const detail =
       body && typeof body === "object" && "detail" in body
         ? (body as { detail: unknown }).detail
@@ -78,6 +96,7 @@ export async function apiPost<T>(path: string, payload?: unknown): Promise<T> {
   const body = text ? JSON.parse(text) : null;
 
   if (!res.ok) {
+    reportIfUnauthorized(res.status);
     const detail =
       body && typeof body === "object" && "detail" in body
         ? (body as { detail: unknown }).detail
@@ -103,6 +122,7 @@ export async function apiPatch<T>(path: string, payload: unknown): Promise<T> {
   const body = text ? JSON.parse(text) : null;
 
   if (!res.ok) {
+    reportIfUnauthorized(res.status);
     const detail =
       body && typeof body === "object" && "detail" in body
         ? (body as { detail: unknown }).detail
