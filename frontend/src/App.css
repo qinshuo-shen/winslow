@@ -16,8 +16,8 @@
 
 /* A little whimsy on the title only -- the rest of the app stays
    deliberately calm/ungamified (see Board.tsx's own notes on that), but
-   the page's own name is allowed a wink. Gradient text + a slight tilt on
-   the turtle, nothing else about the app's tone changes.
+   the page's own name is allowed a wink. Gradient text + the whale-shark
+   mascot image, nothing else about the app's tone changes.
 
    Two bugs fixed here (2026-08-11, sixth same-day follow-up):
    1. The gradient/color:transparent was on the whole <h1>, which the
@@ -53,7 +53,8 @@
 
 .dashboard__header h1 .dashboard__title-mascot {
   display: inline-block;
-  transform: rotate(-8deg);
+  height: 1.4em;
+  width: auto;
 }
 
 .dashboard__date {

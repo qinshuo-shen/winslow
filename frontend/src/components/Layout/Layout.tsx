@@ -3,6 +3,7 @@ import { Outlet } from "react-router-dom";
 import { EndOfDayReminder } from "../Reminder/EndOfDayReminder";
 import { MorningCheckInReminder } from "../Reminder/MorningCheckInReminder";
 import { NavBar } from "./NavBar";
+import whaleSharks from "../../assets/whale-sharks.png";
 import "../../App.css";
 import "./Layout.css";
 
@@ -32,9 +33,12 @@ export function Layout() {
     <div className="dashboard">
       <header className="dashboard__header">
         <h1>
-          <span className="dashboard__title-mascot" aria-hidden="true">
-            🐢
-          </span>
+          <img
+            src={whaleSharks}
+            alt=""
+            aria-hidden="true"
+            className="dashboard__title-mascot"
+          />
           <span className="dashboard__title-text">Winslow</span>
         </h1>
         <p className="dashboard__date">
