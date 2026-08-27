@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Outlet } from "react-router-dom";
 import { EndOfDayReminder } from "../Reminder/EndOfDayReminder";
 import { MorningCheckInReminder } from "../Reminder/MorningCheckInReminder";
+import { FocusTabTitle } from "../FocusTimer/FocusTabTitle";
 import { NavBar } from "./NavBar";
 import whaleSharks from "../../assets/whale-sharks.png";
 import "../../App.css";
@@ -21,6 +22,11 @@ import "./Layout.css";
 // moodRefreshKey is threaded to EvaluationPage via Outlet context since
 // that's the one page whose own on-mount refetch can't see a mood logged
 // here while already mounted -- see EvaluationPage.tsx.
+//
+// FocusTabTitle is mounted here (not in FocusTimerWidget) so the running/
+// paused focus countdown keeps mirroring into the tab title across route
+// changes -- otherwise navigating off /focus unmounts it and the countdown
+// vanishes from the tab.
 
 export interface LayoutOutletContext {
   moodRefreshKey: number;
@@ -53,6 +59,7 @@ export function Layout() {
 
       <NavBar />
 
+      <FocusTabTitle />
       <MorningCheckInReminder />
       <EndOfDayReminder onMoodLogged={() => setMoodRefreshKey((k) => k + 1)} />
 

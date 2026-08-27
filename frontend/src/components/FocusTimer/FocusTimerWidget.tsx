@@ -15,9 +15,9 @@ import "./FocusTimerWidget.css";
 // Web Push notifications (see usePushSubscription.ts, push_notifications.py):
 // a session-end notification is sent server-side (from finalize_session(),
 // reachable with no tab open at all -- see the backend module), so this
-// component's own job is just the one-time opt-in affordance. Separately,
-// a same-tab-only live countdown mirrors into document.title while running
-// or paused, since that only matters while a tab exists to have a title.
+// component's own job is just the one-time opt-in affordance. The live
+// countdown that mirrors into document.title lives in FocusTabTitle.tsx
+// (mounted in Layout, so it survives route changes), not here.
 //
 // 2026-08-07: on a running/paused -> idle-with-result transition (session
 // completed, failed, or stopped), call onSessionEnd (bumps App.tsx's
@@ -70,29 +70,6 @@ export function FocusTimerWidget({ onSessionEnd }: FocusTimerWidgetProps) {
     }
     prevStatusRef.current = state.status;
   }, [state, onSessionEnd]);
-
-  // Same-tab-only live countdown, mirrored into the tab title so it's
-  // visible without switching back to this tab -- both the running focus
-  // countdown (▶) and the paused auto-fail countdown (⏸). The real
-  // session-end notification is server-side push (see usePushSubscription.ts)
-  // and doesn't depend on this. Captured once so it's restored correctly no
-  // matter what document.title happens to be at mount.
-  const originalTitleRef = useRef(document.title);
-  useEffect(() => {
-    if (state?.status === "running") {
-      document.title = `▶ ${formatMMSS(state.remaining_seconds ?? 0)} — Winslow`;
-    } else if (state?.status === "paused") {
-      document.title = `⏸ ${formatMMSS(state.pause_auto_fail_in_seconds ?? 0)} — Winslow`;
-    } else {
-      document.title = originalTitleRef.current;
-    }
-  }, [state?.status, state?.remaining_seconds, state?.pause_auto_fail_in_seconds]);
-
-  useEffect(() => {
-    return () => {
-      document.title = originalTitleRef.current;
-    };
-  }, []);
 
   async function runAction(fn: () => Promise<unknown>) {
     setPending(true);
