@@ -47,7 +47,13 @@ import "./Board.css";
 // landing straight in the Task Pool. Drafts are excluded from the
 // Today/Pool columns entirely and shown in their own "Drafts" section
 // below them instead, narrowed by the same project tab, with a
-// "Release to Pool" action per card.
+// "Release to Pool" action per card. Project-linked Pool/Today cards get
+// the reverse "→ Draft" action (handleReturnToDraft) to send a released
+// step back.
+//
+// "Done" section: completed tasks are likewise kept out of the Today/Pool
+// columns and collected in their own collapsed section below Drafts
+// (see visibleDone). Both the Drafts and Done sections start collapsed.
 
 interface BoardProps {
   onTasksChanged?: () => void;
@@ -72,10 +78,12 @@ function groupByQuadrant(tasks: BacklogTaskOut[]): Record<string, GroupedColumn>
   return groups;
 }
 
-function groupByDraftQuadrant(drafts: BacklogTaskOut[]): Record<string, BacklogTaskOut[]> {
+// Groups a flat task list by priority quadrant -- used by both the Drafts
+// and Done sections (neither has a Today/Pool split).
+function groupByQuadrantFlat(items: BacklogTaskOut[]): Record<string, BacklogTaskOut[]> {
   const groups: Record<string, BacklogTaskOut[]> = {};
   for (const q of PRIORITY_QUADRANTS) groups[q] = [];
-  for (const t of drafts) {
+  for (const t of items) {
     (groups[t.priority] ?? (groups[t.priority] = [])).push(t);
   }
   return groups;
@@ -91,11 +99,10 @@ export function Board({ onTasksChanged, refreshKey }: BoardProps) {
   const [pending, setPending] = useState(false);
   const [notesTask, setNotesTask] = useState<BacklogTaskOut | null>(null);
   const [showNewTask, setShowNewTask] = useState(false);
-  // Collapsed by default is wrong the first time a draft shows up (nothing
-  // to hide yet), but stays expanded thereafter unless the user collapses
-  // it themselves -- a large draft pool was dragging the page out, per the
-  // user's own report.
-  const [draftsCollapsed, setDraftsCollapsed] = useState(false);
+  // Drafts and Done are both secondary to the Today/Pool columns -- collapsed
+  // by default, then stay however the user last set them for the session.
+  const [draftsCollapsed, setDraftsCollapsed] = useState(true);
+  const [doneCollapsed, setDoneCollapsed] = useState(true);
 
   async function refresh() {
     try {
@@ -138,11 +145,12 @@ export function Board({ onTasksChanged, refreshKey }: BoardProps) {
     [projects],
   );
 
-  // Done tasks never appear on the Board -- they're historical record at
-  // that point (especially post-Notion-migration, where completed tasks
-  // badly outnumber open ones), not something to work from day to day.
-  // Nothing is deleted, just excluded from this view; the evaluation
-  // report's "tasks completed today" still counts them via completed_at.
+  // Done tasks are kept out of the Today/Pool columns -- they're historical
+  // record at that point (especially post-Notion-migration, where completed
+  // tasks badly outnumber open ones), not something to work from day to day.
+  // They get their own collapsed "Done" section below instead (see
+  // visibleDone); nothing is deleted. The evaluation report's "tasks
+  // completed today" still counts them via completed_at.
   //
   // Draft steps are excluded here too (they get their own section below,
   // not the Today/Pool columns) -- see visibleDrafts.
@@ -168,7 +176,19 @@ export function Board({ onTasksChanged, refreshKey }: BoardProps) {
     }
     return drafts;
   }, [tasks, selectedProjectId]);
-  const groupedDrafts = useMemo(() => groupByDraftQuadrant(visibleDrafts), [visibleDrafts]);
+  const groupedDrafts = useMemo(() => groupByQuadrantFlat(visibleDrafts), [visibleDrafts]);
+
+  // Completed ("Done") tasks -- excluded from Today/Pool and shown in their
+  // own collapsible section, narrowed by the same project tab as Drafts
+  // (not by the This Week toggle). Historical record, nothing is deleted.
+  const visibleDone = useMemo(() => {
+    let done = (tasks ?? []).filter((t) => t.status === "completed");
+    if (selectedProjectId !== null) {
+      done = done.filter((t) => t.project_id === selectedProjectId);
+    }
+    return done;
+  }, [tasks, selectedProjectId]);
+  const groupedDone = useMemo(() => groupByQuadrantFlat(visibleDone), [visibleDone]);
 
   async function patchTask(id: number, body: BacklogTaskUpdateRequest) {
     setPending(true);
@@ -188,6 +208,14 @@ export function Board({ onTasksChanged, refreshKey }: BoardProps) {
 
   async function handleReleaseDraft(id: number) {
     await patchTask(id, { is_draft: false });
+  }
+
+  // Reverse of Release to Pool -- sends a released task back to the Drafts
+  // section. Only offered for Project-linked tasks (see TaskCard). Clears
+  // is_today so it doesn't silently reappear in the Today column if later
+  // re-released.
+  async function handleReturnToDraft(id: number) {
+    await patchTask(id, { is_draft: true, is_today: false });
   }
 
   async function handleDelete(id: number) {
@@ -232,6 +260,7 @@ export function Board({ onTasksChanged, refreshKey }: BoardProps) {
                       onToggleToday={() => patchTask(t.id, { is_today: !t.is_today })}
                       onToggleThisWeek={() => patchTask(t.id, { is_this_week: !t.is_this_week })}
                       onDelete={() => handleDelete(t.id)}
+                      onReturnToDraft={() => handleReturnToDraft(t.id)}
                     />
                   ))}
                 </ul>
@@ -282,6 +311,55 @@ export function Board({ onTasksChanged, refreshKey }: BoardProps) {
                       onToggleThisWeek={() => patchTask(t.id, { is_this_week: !t.is_this_week })}
                       onDelete={() => handleDelete(t.id)}
                       onRelease={() => handleReleaseDraft(t.id)}
+                    />
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+        )}
+      </div>
+    );
+  }
+
+  function renderDoneSection() {
+    return (
+      <div className="board__done-section">
+        <button
+          type="button"
+          className="board__done-header"
+          onClick={() => setDoneCollapsed((v) => !v)}
+          aria-expanded={!doneCollapsed}
+        >
+          <span className={`board__done-chevron ${doneCollapsed ? "board__done-chevron--collapsed" : ""}`}>
+            ▾
+          </span>
+          Done ({visibleDone.length})
+        </button>
+        {!doneCollapsed && (
+        <div className="board__done-list">
+          {PRIORITY_QUADRANTS.map((q) => {
+            const items = groupedDone[q] ?? [];
+            if (items.length === 0) return null;
+            return (
+              <div key={q} className="board__quadrant">
+                <h4 className={`board__quadrant-title board__quadrant-title--${quadrantClass(q)}`}>
+                  {quadrantLabel(q)}
+                </h4>
+                <ul className="board__quadrant-list">
+                  {items.map((t) => (
+                    <TaskCard
+                      key={t.id}
+                      task={t}
+                      projectName={t.project_id !== null ? projectNameById.get(t.project_id) : undefined}
+                      pending={pending}
+                      onOpenNotes={() => setNotesTask(t)}
+                      onStatusChange={(status: TaskStatus) => patchTask(t.id, { status })}
+                      onPriorityChange={(priority: string) => patchTask(t.id, { priority })}
+                      onToggleToday={() => patchTask(t.id, { is_today: !t.is_today })}
+                      onToggleThisWeek={() => patchTask(t.id, { is_this_week: !t.is_this_week })}
+                      onDelete={() => handleDelete(t.id)}
                     />
                   ))}
                 </ul>
@@ -346,6 +424,8 @@ export function Board({ onTasksChanged, refreshKey }: BoardProps) {
       )}
 
       {tasks !== null && visibleDrafts.length > 0 && renderDraftsSection()}
+
+      {tasks !== null && visibleDone.length > 0 && renderDoneSection()}
 
       {notesTask && (
         <NotesModal

@@ -19,6 +19,10 @@ interface TaskCardProps {
   // (PATCH is_draft: false). Draft cards render this instead of the
   // Today/Pool toggle, since a draft isn't meaningfully in either column yet.
   onRelease?: () => void;
+  // Reverse of onRelease -- sends a released Pool/Today task back to Draft
+  // (PATCH is_draft: true). Only rendered on non-draft cards that are
+  // linked to a Project (task.project_id !== null).
+  onReturnToDraft?: () => void;
 }
 
 export function TaskCard({
@@ -32,6 +36,7 @@ export function TaskCard({
   onToggleThisWeek,
   onDelete,
   onRelease,
+  onReturnToDraft,
 }: TaskCardProps) {
   return (
     <li className={`board-card board-card--${quadrantClass(task.priority)}`}>
@@ -143,6 +148,17 @@ export function TaskCard({
             >
               {task.is_this_week ? "− This Week" : "+ This Week"}
             </button>
+            {task.project_id !== null && onReturnToDraft && (
+              <button
+                type="button"
+                className="board-card__to-draft"
+                disabled={pending}
+                onClick={onReturnToDraft}
+                title="Send this step back to the project's Drafts"
+              >
+                → Draft
+              </button>
+            )}
           </>
         )}
       </div>
