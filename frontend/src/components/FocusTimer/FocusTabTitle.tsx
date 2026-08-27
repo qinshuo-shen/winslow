@@ -7,13 +7,18 @@ import { useFocusPolling } from "./useFocusPolling";
 // in the widget, navigating away from /focus unmounted it and the countdown
 // vanished from the tab.
 //
-// The displayed value is interpolated locally on a 1s setInterval from the
-// last poll's anchor (remaining_seconds / pause_auto_fail_in_seconds + the
-// wall-clock time it was received), not written only when a poll lands. That
-// keeps the title ticking every second even if useFocusPolling's fetch is
-// slow or throttled (background tabs), and each fresh poll re-anchors so
-// drift is corrected. Deep-background timer throttling is a browser limit we
-// can't beat from JS; a poll on refocus re-syncs immediately.
+// The displayed value is interpolated locally from the last poll's anchor
+// (remaining_seconds / pause_auto_fail_in_seconds + the wall-clock time it
+// was received), repainted:
+//   - every 1s by setInterval (foreground, and the first few minutes of a
+//     background tab), and
+//   - immediately whenever the tab/window regains focus.
+// The second path matters because browsers throttle -- and eventually freeze
+// -- setInterval in a fully backgrounded tab, so the interval alone can go
+// stale exactly while the tab is hidden. Repainting on visibilitychange/focus
+// means a glance back at the tab is always current even if the interval was
+// asleep. A truly hidden tab's title can still lag mid-hide; that's a browser
+// limit no JS can beat.
 //
 // This does mean the app polls GET /api/focus/state every second on every
 // page now, not just /focus. That's one tiny JSON GET/s -- fine for this
@@ -59,18 +64,27 @@ export function FocusTabTitle() {
     }
   }, [state?.status, state?.remaining_seconds, state?.pause_auto_fail_in_seconds]);
 
-  // Local 1s ticker: interpolate the countdown from the anchor.
+  // Repaint the title from the anchor: on a 1s interval, and immediately when
+  // the tab/window regains focus (interval may have been throttled/frozen).
   useEffect(() => {
-    const tick = () => {
+    const render = () => {
       const a = anchorRef.current;
       if (!a) return;
       const remaining = Math.max(0, a.secs - (Date.now() - a.at) / 1000);
-      const icon = a.mode === "running" ? "▶" : "⏸";
-      document.title = `${icon} ${formatMMSS(remaining)} — Winslow`;
+      document.title = `${a.mode === "running" ? "▶" : "⏸"} ${formatMMSS(remaining)} — Winslow`;
     };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
+    render();
+    const id = setInterval(render, 1000);
+    const onVisibility = () => {
+      if (!document.hidden) render();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", render);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", render);
+    };
   }, []);
 
   // Restore the original title if this ever unmounts.
