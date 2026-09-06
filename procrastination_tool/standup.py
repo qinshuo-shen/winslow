@@ -3,9 +3,11 @@ Virtual daily standup (Scrum-lite feature set) -- an on-demand, single-shot
 AI-generated response: by default a short, forward-looking note about
 today's plan, or -- if the user typed a question into the same box -- a
 direct answer to it. This also absorbed the AI PM-agent's backlog-review
-job (see pm_agent.py, now unregistered but left on disk): rather than a
-second AI feature, one on-demand box now covers both "what's on deck
-today" and "what should I reprioritize" style questions.
+job (that module was unregistered when this one shipped, and deleted
+outright 2026-09-06 -- see api/main.py's comment at the router
+registrations): rather than a second AI feature, one on-demand box now
+covers both "what's on deck today" and "what should I reprioritize"
+style questions.
 
 Strictly forward-looking by design, not just by prompt instruction, for
 the DEFAULT (no-question) note specifically: the weekly Retro (see
@@ -22,9 +24,9 @@ column to hold the question text in, so "the question field is ephemeral"
 stays a schema fact, not a convention someone could accidentally violate.
 
 The `anthropic` package is imported lazily, inside AnthropicStandupClient.
-__init__ only -- same reasoning as pm_agent.py: this module, FakeStandup
-Client, and STANDUP_MOCK=1 local dev all work with the dependency
-uninstalled and no API key at all.
+__init__ only -- a convention inherited from the retired PM-agent: this
+module, FakeStandupClient, and STANDUP_MOCK=1 local dev all work with the
+dependency uninstalled and no API key at all.
 """
 import json
 import sqlite3
@@ -51,7 +53,7 @@ CREATE INDEX IF NOT EXISTS idx_daily_standups_note_date ON daily_standups(note_d
 
 # A single personal user's realistic open-task count is well under this; it
 # exists purely as a hard ceiling on request size, oldest tasks dropped
-# first -- same constant/reasoning as pm_agent.py's own _MAX_BACKLOG_TASKS.
+# first -- the same constant and reasoning the retired PM-agent used.
 _MAX_BACKLOG_TASKS = 150
 
 # Nullable for the same reason every other module's multi-user column is:
@@ -139,9 +141,9 @@ _STANDUP_RESPONSE_SCHEMA = {
 
 
 class AnthropicStandupClient:
-    """A single-shot, non-agentic structured-output call -- same mechanism
-    as pm_agent.AnthropicPMAgentClient (plain messages.create() with
-    output_config.format, response parsed manually)."""
+    """A single-shot, non-agentic structured-output call -- a plain
+    messages.create() with output_config.format, response parsed manually
+    (the same mechanism the retired PM-agent's client used)."""
 
     def __init__(self, api_key: str, model: str):
         import anthropic  # lazy: only needed when this class is actually instantiated
@@ -150,9 +152,20 @@ class AnthropicStandupClient:
         self._model = model
 
     def generate_note(self, snapshot: dict) -> str:
+        # max_tokens is a ceiling, not a reservation -- an unused headroom
+        # costs nothing. It was 1024, which was too tight on Opus 5:
+        # omitting `thinking` runs ADAPTIVE thinking by default on that
+        # model (a change from Opus 4.8/4.7, where omitting it meant no
+        # thinking at all), and those thinking tokens are billed as output
+        # AND share this same ceiling. A long note (the longest stored so
+        # far is ~550 tokens) plus a few hundred thinking tokens could hit
+        # 1024, at which point stop_reason comes back "max_tokens", the
+        # JSON below is truncated mid-string, and json.loads() raises --
+        # surfacing as a bare 500, since api/routers/standup.py deliberately
+        # catches only StandupNotConfiguredError.
         response = self._client.messages.create(
             model=self._model,
-            max_tokens=1024,
+            max_tokens=8000,
             system=_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": json.dumps(snapshot)}],
             output_config={"format": {"type": "json_schema", "schema": _STANDUP_RESPONSE_SCHEMA}},
@@ -190,7 +203,7 @@ def is_configured() -> bool:
 def get_client() -> StandupClient:
     """FastAPI route calls this directly (not via Depends()) so
     StandupNotConfiguredError stays catchable in the same try block --
-    identical reasoning to pm_agent.get_client()'s docstring."""
+    a convention inherited from the retired PM-agent's own get_client()."""
     if STANDUP_MOCK:
         return FakeStandupClient()
     if not is_configured():
@@ -203,8 +216,8 @@ def get_client() -> StandupClient:
 def build_standup_snapshot(user_id: int, question: str) -> dict:
     """The full open backlog (every non-completed, non-draft task, not just
     today's) -- needed so a question can actually be answered, mirroring
-    pm_agent.build_snapshot()'s own backlog shape and cap. Still no task
-    `notes` (privacy, same boundary as pm_agent), still no import of
+    the retired PM-agent's own backlog shape and cap. Still no task
+    `notes` (privacy, the same boundary that module drew), still no import of
     `evaluation` anywhere in this module -- daily/weekly retro rollups and
     mood data stay structurally unreachable; only per-task `created_at`/
     `carried_forward` are newly exposed here, not history in aggregate.
@@ -266,7 +279,7 @@ def generate_standup(user_id: int, client: StandupClient, question: str = "") ->
 
 def get_today_note(user_id: int) -> Optional[StandupNote]:
     """The most recently generated note for TODAY specifically (not "most
-    recent ever," unlike pm_agent.get_last_review()) -- "last generation
+    recent ever," unlike the retired PM-agent's last-review getter) -- "last generation
     today wins" if regenerated more than once, and a genuine midnight
     rollover needs no special handling since date.today() is re-evaluated
     on every call, nothing is cached."""

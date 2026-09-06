@@ -153,18 +153,26 @@ app.include_router(backlog.router, prefix="/api")
 # the owner's private task backlog to any caller including the friend --
 # and it's unreachable from the live UI anyway (NowView/useNowPolling are
 # unimported dead code, see App.tsx's docstring). Left on disk, unused,
-# same convention as routers/tasks.py, planner.py, character.py, gear.py,
-# pm_agent.py above.
+# same convention as routers/tasks.py, planner.py, character.py, gear.py
+# above.
 app.include_router(tags.router, prefix="/api")
 # End-of-day evaluation + mood tracker (same-day follow-up).
 app.include_router(evaluation.router, prefix="/api")
 # Scrum-lite: weekly retro (sprint/velocity feature set).
 app.include_router(retro.router, prefix="/api")
-# Scrum-lite: AI PM-agent (suggest-only backlog review) -- no longer
-# registered, its job absorbed into the standup Q&A box (see standup.py's
-# module docstring). procrastination_tool/pm_agent.py and
-# api/routers/pm_agent.py are left on disk, unused, same convention as
-# this project's other retired modules (spin_wheel.py, character.py).
+# Scrum-lite: the AI PM-agent (suggest-only backlog review) was retired
+# 2026-08-17 -- its job absorbed into the standup Q&A box (see standup.py's
+# module docstring) -- and DELETED outright 2026-09-06, rather than being
+# left on disk like the other retired modules above. Three reasons it
+# didn't earn the usual "leave it, it's harmless" treatment: its router's
+# review() had no Depends(get_current_user) at all, its build_snapshot()
+# called tasks.list_all_tasks() with no args (a TypeError against the
+# post-multi-user signature) and pm_agent_reviews had no user_id column --
+# so re-registering it was one line away from an unauthenticated, unscoped,
+# *paid* endpoint serving the owner's whole backlog to anyone on the
+# tailnet. And its snapshot sent evaluation.list_evaluations(7) -- seven
+# rows of per-day mood/minutes -- which is exactly the unprompted
+# day-by-day comparison standup.py is structurally built to prevent.
 # Web Push notifications for the focus timer.
 app.include_router(push.router, prefix="/api")
 # Scrum-lite: virtual daily standup (forward-looking, on-demand note).

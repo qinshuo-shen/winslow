@@ -429,31 +429,6 @@ class WeeklyRetroGenerateRequest(BaseModel):
     week_start: Optional[date] = None
 
 
-class PMSuggestedActionOut(BaseModel):
-    """A subset of BacklogTaskUpdateRequest's fields -- "applying" a
-    suggestion in the frontend is just PATCHing /api/backlog/{task_id}
-    with exactly this dict, the same call the Board itself makes."""
-
-    priority: Optional[str] = None
-    is_today: Optional[bool] = None
-    is_this_week: Optional[bool] = None
-
-
-class PMSuggestionOut(BaseModel):
-    id: str
-    kind: str
-    task_id: Optional[int]
-    title: str
-    rationale: str
-    suggested_action: Optional[PMSuggestedActionOut] = None
-
-
-class PMReviewOut(BaseModel):
-    generated_at: datetime
-    model_used: str
-    suggestions: List[PMSuggestionOut]
-
-
 class StandupGenerateRequest(BaseModel):
     question: str = ""
 

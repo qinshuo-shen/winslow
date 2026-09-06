@@ -4,7 +4,7 @@ Shared week-boundary utility for the sprint/retro/velocity feature set.
 Monday-start, matching the only prior "week" precedent in this codebase
 (deadlines._week_start(), which computes the same thing for the dormant
 weekly-pass-limit feature) -- promoted here as a public, date-based (not
-datetime-based) helper so tasks.py/evaluation.py/pm_agent.py all compute
+datetime-based) helper so tasks.py and evaluation.py both compute
 "which week" the same way instead of each rolling their own.
 """
 from datetime import date, timedelta

@@ -167,19 +167,18 @@ DATA_DIR = PROJECT_ROOT / "data"
 DATA_DIR.mkdir(exist_ok=True)
 SESSION_DB_PATH = DATA_DIR / "sessions.db"
 
-# AI PM-agent (Scrum-lite feature set, pm_agent.py) -- same optional-env-var
-# shape as NOTION_TOKEN above. Defaults to claude-opus-5 (not a cheaper
-# model) per Anthropic's own default-to-Opus guidance -- the user can opt
-# down to claude-sonnet-5 via this one env var if they want to trade
-# quality for cost, but that's their call, not a silent default here.
-# PM_AGENT_MOCK lets local dev exercise the full review flow with zero API
-# calls/cost and no key at all (see pm_agent.FakePMAgentClient).
+# Shared by every AI feature. Same optional-env-var shape as NOTION_TOKEN
+# above. (The AI PM-agent's own PM_AGENT_MODEL/PM_AGENT_MOCK pair lived
+# here until 2026-09-06, when that feature was deleted outright -- see
+# standup.py's docstring for why its job moved into the standup box.)
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY") or None
-PM_AGENT_MODEL = os.environ.get("PM_AGENT_MODEL", "claude-opus-5")
-PM_AGENT_MOCK = os.environ.get("PM_AGENT_MOCK") == "1"
 
-# Virtual daily standup (same ANTHROPIC_API_KEY, own model/mock switches so
-# it can be dev-tested independently of PM_AGENT_MOCK -- see standup.py).
+# Virtual daily standup. Defaults to claude-opus-5 (not a cheaper model)
+# per Anthropic's own default-to-Opus guidance -- the user can opt down to
+# claude-sonnet-5 via this one env var if they want to trade quality for
+# cost, but that's their call, not a silent default here. STANDUP_MOCK lets
+# local dev exercise the full flow with zero API calls/cost and no key at
+# all (see standup.FakeStandupClient).
 STANDUP_MODEL = os.environ.get("STANDUP_MODEL", "claude-opus-5")
 STANDUP_MOCK = os.environ.get("STANDUP_MOCK") == "1"
 

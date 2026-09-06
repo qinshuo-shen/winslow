@@ -7,12 +7,13 @@ import { StandupPanel } from "../components/Standup/StandupPanel";
 // direct answer, no board data read and no task-mutation path).
 //
 // The old PMAgentPanel (a separate "Backlog review" AI feature, suggested
-// changes with an Apply button) has been removed from this page -- its
-// job was absorbed into StandupPanel's own question box instead of
-// keeping two separate AI features (see standup.py's module docstring).
-// procrastination_tool/pm_agent.py, api/routers/pm_agent.py, and
-// PMAgentPanel.tsx are left on disk, unused, same convention as this
-// project's other retired modules.
+// changes with an Apply button) was removed from this page 2026-08-17 --
+// its job was absorbed into StandupPanel's own question box instead of
+// keeping two separate AI features (see standup.py's module docstring) --
+// and deleted outright 2026-09-06 along with its backend, rather than
+// being left on disk like this project's other retired modules. See
+// api/main.py's comment at the router registrations for why that one got
+// deleted instead of parked.
 
 export function TasksPage() {
   return (

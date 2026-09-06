@@ -331,27 +331,6 @@ export interface WeeklyRetroOut {
   quadrant_breakdown: Record<string, number>;
 }
 
-export interface PMSuggestedActionOut {
-  priority: string | null;
-  is_today: boolean | null;
-  is_this_week: boolean | null;
-}
-
-export interface PMSuggestionOut {
-  id: string;
-  kind: string;
-  task_id: number | null;
-  title: string;
-  rationale: string;
-  suggested_action: PMSuggestedActionOut | null;
-}
-
-export interface PMReviewOut {
-  generated_at: string; // datetime
-  model_used: string;
-  suggestions: PMSuggestionOut[];
-}
-
 // Virtual daily standup (Scrum-lite feature set) -- a single AI-generated,
 // strictly forward-looking note. No request-type export: POST /standup/
 // generate takes a plain { blockers } object inline.

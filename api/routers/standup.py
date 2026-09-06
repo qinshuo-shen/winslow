@@ -1,7 +1,7 @@
 """
 Virtual daily standup (Scrum-lite feature set) -- thin wrapper around
-procrastination_tool.standup, matching pm_agent.py's precedent of
-surfacing a domain "not configured" error as an HTTP 400.
+procrastination_tool.standup, surfacing a domain "not configured" error as
+an HTTP 400 (a convention inherited from the retired PM-agent router).
 
 POST /api/standup/generate -- calls the configured client (real or
                                FakeStandupClient under STANDUP_MOCK=1),
@@ -30,8 +30,13 @@ def _build_standup_out(n: "standup.StandupNote") -> StandupOut:
 def generate(
     body: StandupGenerateRequest, user: auth.User = Depends(get_current_user)
 ) -> StandupOut:
-    # get_client() is called here, not via Depends(), for the same reason
-    # pm_agent.py's router does this -- see that module's comment.
+    # get_client() is called here, not via FastAPI's Depends(), specifically
+    # so StandupNotConfiguredError -- raised while resolving the client, not
+    # while generating the note -- is still catchable in this same try block.
+    # Depends() would run get_client() before this function body starts,
+    # which would surface the error as an unhandled 500 instead of the 400
+    # this router intends. (Reasoning inlined 2026-09-06 from the retired
+    # PM-agent router, which is where this comment used to point.)
     try:
         client = standup.get_client()
         result = standup.generate_standup(user.id, client, question=body.question)

@@ -8,7 +8,7 @@ Requires a one-time VAPID keypair (see scripts/generate_vapid_keys.py),
 written to data/vapid_private_key.pem -- gitignored, mirroring sessions.db.
 The `pywebpush` package (optional `push` extra) is imported lazily inside
 send_to_user() only, so nothing else in the app depends on it being
-installed, matching pm_agent.py's lazy `import anthropic` convention.
+installed, matching standup.py's lazy `import anthropic` convention.
 """
 import json
 import sqlite3
