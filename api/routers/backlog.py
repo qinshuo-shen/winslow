@@ -44,7 +44,8 @@ def _build_task_out(t: tasks.Task) -> BacklogTaskOut:
         **fields,
         carried_forward=(t.carried_forward_date == date.today().isoformat()),
         is_current_week_commitment=(
-            t.week_committed_date == week_start_date(date.today()).isoformat()
+            t.is_this_week
+            and t.week_committed_date == week_start_date(date.today()).isoformat()
         ),
     )
 
@@ -73,6 +74,7 @@ def create_task(
             user_id=user.id, name=body.name, priority=body.priority, notes=body.notes,
             specific_project=body.specific_project, tags=body.tags,
             project_id=body.project_id, is_draft=body.is_draft,
+            is_today=body.is_today, is_this_week=body.is_this_week,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

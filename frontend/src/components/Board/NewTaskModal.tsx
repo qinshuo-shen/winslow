@@ -37,6 +37,8 @@ export function NewTaskModal({ tagTree, projects, onClose, onCreated, onTagCreat
   const [linkedProjectId, setLinkedProjectId] = useState<string>("");
   const [tags, setTags] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
+  const [isToday, setIsToday] = useState(false);
+  const [isThisWeek, setIsThisWeek] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,6 +57,8 @@ export function NewTaskModal({ tagTree, projects, onClose, onCreated, onTagCreat
         specific_project: project.trim() || null,
         tags,
         project_id: linkedProjectId ? Number(linkedProjectId) : null,
+        is_today: isToday,
+        is_this_week: isThisWeek,
       };
       const created = await apiPost<BacklogTaskOut>("/backlog", body);
       onCreated(created);
@@ -115,6 +119,24 @@ export function NewTaskModal({ tagTree, projects, onClose, onCreated, onTagCreat
               </option>
             ))}
           </select>
+          <label className="task-modal__toggle">
+            <input
+              type="checkbox"
+              checked={isToday}
+              onChange={(e) => setIsToday(e.target.checked)}
+              disabled={pending}
+            />
+            Today
+          </label>
+          <label className="task-modal__toggle">
+            <input
+              type="checkbox"
+              checked={isThisWeek}
+              onChange={(e) => setIsThisWeek(e.target.checked)}
+              disabled={pending}
+            />
+            This Week
+          </label>
         </div>
 
         <TagEditor

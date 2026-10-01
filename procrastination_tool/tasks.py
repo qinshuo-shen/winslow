@@ -126,12 +126,13 @@ _NEW_COLUMNS = {
     "carried_forward_date": "TEXT",
     # Sprint/weekly commitment (Scrum-lite feature set): mirrors is_today's
     # shape at a coarser granularity. is_this_week is a manual toggle;
-    # week_committed_date is set to that week's Monday only when
-    # is_this_week flips False->True, and is deliberately left untouched
-    # when it flips back off -- same "historical marker that goes stale for
-    # free" reasoning as carried_forward_date, used by the weekly retro to
-    # compute committed-vs-completed after roll_over_week() has cleared
-    # is_this_week for the week.
+    # week_committed_date is set to that week's Monday when is_this_week
+    # flips False->True, and cleared when the user manually flips it back
+    # off (an un-commit shouldn't keep the badge or count in the retro).
+    # roll_over_week() deliberately leaves it untouched -- same "historical
+    # marker that goes stale for free" reasoning as carried_forward_date,
+    # used by the weekly retro to compute committed-vs-completed after the
+    # Monday reset has cleared is_this_week for the week.
     "is_this_week": "INTEGER NOT NULL DEFAULT 0",
     "week_committed_date": "TEXT",
     # 2026-08 page-split redesign: optional link to a projects.py Project
@@ -355,6 +356,8 @@ def add_task(
     tags: Optional[List[str]] = None,
     project_id: Optional[int] = None,
     is_draft: bool = False,
+    is_today: bool = False,
+    is_this_week: bool = False,
 ) -> Task:
     """`status` defaults to not-started for normal in-app task creation, but
     is accepted as a parameter so migrate_notion_tasks.py can preserve each
@@ -367,7 +370,11 @@ def add_task(
 
     `is_draft` defaults to False so every existing caller (ad hoc task
     creation, migration) keeps today's "instantly in the Task Pool"
-    behavior; only the Roadmap quick-add's opt-in checkbox passes True."""
+    behavior; only the Roadmap quick-add's opt-in checkbox passes True.
+
+    `is_today`/`is_this_week` let the New Task modal place a task straight
+    into Today and/or this week's sprint -- `is_this_week` stamps
+    week_committed_date the same way update_task() does."""
     name = name.strip()
     if not name:
         raise ValueError("Task name can't be empty")
@@ -379,14 +386,17 @@ def add_task(
     effort_minutes = PRIORITY_DURATION_MINUTES.get(priority, 60)
     created_at = datetime.now()
     completed_at = created_at if status == STATUS_COMPLETED else None
+    week_committed_date = week_start_date(created_at.date()).isoformat() if is_this_week else None
     with closing(_connect()) as conn:
         cur = conn.execute(
             "INSERT INTO tasks (user_id, name, priority, effort_minutes, notes, status, "
             "created_at, specific_project, is_today, position, completed_at, project_id, "
-            "is_draft) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)",
+            "is_draft, is_this_week, week_committed_date) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)",
             (user_id, name, priority, effort_minutes, notes, status, created_at.isoformat(),
-             specific_project, completed_at.isoformat() if completed_at else None, project_id,
-             1 if is_draft else 0),
+             specific_project, 1 if is_today else 0,
+             completed_at.isoformat() if completed_at else None, project_id,
+             1 if is_draft else 0, 1 if is_this_week else 0, week_committed_date),
         )
         task_id = cur.lastrowid
         normalized_tags = _normalize_tags(tags) if tags else []
@@ -396,9 +406,10 @@ def add_task(
     return Task(
         id=task_id, user_id=user_id, name=name, priority=priority, effort_minutes=effort_minutes,
         notes=notes, status=status, created_at=created_at,
-        specific_project=specific_project, is_today=False, position=0,
+        specific_project=specific_project, is_today=is_today, position=0,
         completed_at=completed_at, tags=normalized_tags, project_id=project_id,
-        is_draft=is_draft,
+        is_draft=is_draft, is_this_week=is_this_week,
+        week_committed_date=week_committed_date,
     )
 
 
@@ -494,8 +505,9 @@ def update_task(
     the frontend always sends the complete desired list, same as how a
     Notion multi-select field is edited. `is_this_week`, when it flips
     False->True, also stamps week_committed_date with the current week's
-    Monday -- flipping True->False leaves that date alone (see the
-    _NEW_COLUMNS comment for why). `project_id` follows the same
+    Monday -- flipping True->False clears that date, so a manual
+    un-commit drops the "this week" badge and the retro's committed count
+    (see the _NEW_COLUMNS comment). `project_id` follows the same
     "None means leave unchanged" rule -- pass 0 (never a real task/project
     id) to unlink it, since JSON has no way to distinguish "field omitted"
     from "field sent as null" once it reaches an Optional Python param.
@@ -548,9 +560,8 @@ def update_task(
     if is_this_week is not None:
         fields.append("is_this_week = ?")
         values.append(1 if is_this_week else 0)
-        if is_this_week:
-            fields.append("week_committed_date = ?")
-            values.append(week_start_date(date_cls.today()).isoformat())
+        fields.append("week_committed_date = ?")
+        values.append(week_start_date(date_cls.today()).isoformat() if is_this_week else None)
     if project_id is not None:
         fields.append("project_id = ?")
         values.append(project_id if project_id != 0 else None)

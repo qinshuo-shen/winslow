@@ -284,6 +284,8 @@ class BacklogTaskCreateRequest(BaseModel):
     tags: List[str] = []
     project_id: Optional[int] = None
     is_draft: bool = False
+    is_today: bool = False
+    is_this_week: bool = False
 
 
 class BacklogTaskUpdateRequest(BaseModel):

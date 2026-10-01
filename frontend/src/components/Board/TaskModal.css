@@ -89,6 +89,15 @@
   flex-basis: 100%;
 }
 
+.task-modal__toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--text);
+  white-space: nowrap;
+}
+
 .task-modal__label {
   display: block;
   font-size: 0.75rem;

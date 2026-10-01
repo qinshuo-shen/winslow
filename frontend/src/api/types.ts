@@ -247,6 +247,8 @@ export interface BacklogTaskCreateRequest {
   tags?: string[];
   project_id?: number | null;
   is_draft?: boolean;
+  is_today?: boolean;
+  is_this_week?: boolean;
 }
 
 // Board (2026-08-11 redesign, same-day follow-up): PATCH /api/backlog/{id}
